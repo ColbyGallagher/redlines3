@@ -32,7 +32,20 @@ export function LoginForm({
           </div>
           <Input id="password" type="password" required />
         </div>
-        <Button type="submit" className="w-full">
+        <Button type="submit" className="w-full" onClick={(e) => {
+          e.preventDefault();
+          const email = (document.getElementById('email') as HTMLInputElement)?.value;
+          const password = (document.getElementById('password') as HTMLInputElement)?.value;
+          
+          // Fake credentials for development
+          if (email === 'dev@test.com' && password === 'password') {
+            alert('Login successful! Redirecting...');
+            // Add your redirect logic here
+            window.location.href = '/dashboard'; // or wherever you want to go
+          } else {
+            alert('Invalid credentials. Use dev@test.com / password for development');
+          }
+        }}>
           Login
         </Button>
         <div className="after:border-border relative text-center text-sm after:absolute after:inset-0 after:top-1/2 after:z-0 after:flex after:items-center after:border-t">
@@ -48,7 +61,16 @@ export function LoginForm({
                     />
                   </svg>
                   Login with Google
-                </Button>
+        </Button>
+        <Button variant="outline" className="w-full">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path
+              d="M11.4 24H0V12.6h11.4V24zM24 24H12.6V12.6H24V24zM11.4 11.4H0V0h11.4v11.4zM24 11.4H12.6V0H24v11.4z"
+              fill="currentColor"
+            />
+          </svg>
+          Login with Microsoft
+        </Button>
       </div>
       <div className="text-center text-sm">
         Don&apos;t have an account?{" "}

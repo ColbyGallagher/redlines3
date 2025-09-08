@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { Analytics } from "@vercel/analytics/next"
+import { ModeToggle } from "@/components/mode-toggle";
 import LoginPage from "./login/page";
 export default function Home() {
   const [email, setEmail] = useState("");
@@ -12,6 +13,7 @@ export default function Home() {
   };
   return (
     <main className="flex flex-col items-center justify-center min-h-screen gap-4">
+      <ModeToggle/>
       <LoginPage/>
       
       <Analytics/>
