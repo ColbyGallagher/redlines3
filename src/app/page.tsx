@@ -1,8 +1,8 @@
 "use client";
 import { useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import { Button } from "@/components/ui/button";
 import { Analytics } from "@vercel/analytics/next"
+import LoginPage from "./login/page";
 export default function Home() {
   const [email, setEmail] = useState("");
   const handleLogin = async () => {
@@ -12,14 +12,8 @@ export default function Home() {
   };
   return (
     <main className="flex flex-col items-center justify-center min-h-screen gap-4">
-      <input
-        type="email"
-        placeholder="Enter your email"
-        className="p-2 border rounded"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-      />
-      <Button onClick={handleLogin}>Sign In</Button>
+      <LoginPage/>
+      
       <Analytics/>
     </main>
   );
