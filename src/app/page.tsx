@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
+import { Analytics } from "@vercel/analytics/next"
 export default function Home() {
   const [email, setEmail] = useState("");
   const handleLogin = async () => {
@@ -19,6 +20,7 @@ export default function Home() {
         onChange={(e) => setEmail(e.target.value)}
       />
       <Button onClick={handleLogin}>Sign In</Button>
+      <Analytics/>
     </main>
   );
 }
