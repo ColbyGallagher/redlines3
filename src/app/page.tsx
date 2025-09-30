@@ -3,6 +3,7 @@ import { useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { Analytics } from "@vercel/analytics/next"
 import { ModeToggle } from "@/components/mode-toggle";
+import PricingSection from "@/components/pricing-section";
 import LoginPage from "./login/page";
 export default function Home() {
   const [email, setEmail] = useState("");
@@ -12,11 +13,15 @@ export default function Home() {
     else alert("Check your email for a login link!");
   };
   return (
-    <main className="flex flex-col items-center justify-center min-h-screen gap-4">
-      <ModeToggle/>
-      <LoginPage/>
-      
-      <Analytics/>
+    <main className="flex min-h-screen flex-col items-center gap-12 pb-16 pt-10">
+      <div className="flex w-full max-w-6xl flex-col gap-6 px-6">
+        <div className="flex items-center justify-between">
+          <ModeToggle />
+        </div>
+        <LoginPage />
+      </div>
+      <PricingSection />
+      <Analytics />
     </main>
   );
 }
