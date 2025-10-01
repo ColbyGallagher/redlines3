@@ -13,7 +13,7 @@ export default function Home() {
     else alert("Check your email for a login link!");
   };
   return (
-    <main className="flex min-h-screen flex-col items-center gap-12 pb-16 pt-10">
+    <div className="flex min-h-screen flex-col gap-12 pb-16 pt-10">
       <div className="flex w-full max-w-6xl flex-col gap-6 px-6">
         <div className="flex items-center justify-between">
           <ModeToggle />
@@ -22,6 +22,6 @@ export default function Home() {
       </div>
       <PricingSection />
       <Analytics />
-    </main>
+    </div>
   );
 }

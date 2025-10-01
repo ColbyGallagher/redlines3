@@ -1,6 +1,6 @@
 "use client"
 
-import { ArrowUpDown, MoreHorizontal } from "lucide-react"
+import { ArrowUpDown, ExternalLink, MoreHorizontal } from "lucide-react"
 import { ColumnDef } from "@tanstack/react-table"
 
 import { Button } from "@/components/ui/button"
@@ -96,6 +96,29 @@ export const columns: ColumnDef<ReviewRecord>[] = [
         <ArrowUpDown className="size-4" />
       </Button>
     ),
+    cell: ({ row, table }) => {
+      const project = row.original.project
+      const navigateProject = table.options.meta?.navigateProject as ((id: string) => void) | undefined
+
+      if (!project) {
+        return <span className="text-muted-foreground">—</span>
+      }
+
+      return (
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation()
+            navigateProject?.(project.id)
+          }}
+          className="inline-flex items-center gap-1 text-left font-medium text-foreground transition hover:underline"
+        >
+          {project.name}
+          <ExternalLink className="size-3" aria-hidden />
+          <span className="sr-only">Open {project.name}</span>
+        </button>
+      )
+    },
   },
   {
     accessorKey: "dueDate",
@@ -167,8 +190,9 @@ export const columns: ColumnDef<ReviewRecord>[] = [
     id: "actions",
     enableSorting: false,
     enableHiding: false,
-    cell: ({ row }) => {
+    cell: ({ row, table }) => {
       const review = row.original
+      const navigate = table.options.meta?.navigate as ((id: string) => void) | undefined
 
       return (
         <DropdownMenu>
@@ -180,7 +204,9 @@ export const columns: ColumnDef<ReviewRecord>[] = [
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-48">
             <DropdownMenuLabel>Actions</DropdownMenuLabel>
-            <DropdownMenuItem>View details</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => navigate?.(review.id)}>
+              View details
+            </DropdownMenuItem>
             <DropdownMenuItem>Share with team</DropdownMenuItem>
             <DropdownMenuItem>Duplicate review</DropdownMenuItem>
             <DropdownMenuSeparator />

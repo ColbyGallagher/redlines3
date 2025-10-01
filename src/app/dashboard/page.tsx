@@ -1,4 +1,3 @@
-import { AppSidebar } from "@/components/app-sidebar"
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -8,6 +7,7 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import {
   Card,
   CardContent,
@@ -24,21 +24,25 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Separator } from "@/components/ui/separator"
-import {
-  SidebarInset,
-  SidebarProvider,
-  SidebarTrigger,
-} from "@/components/ui/sidebar"
+import { SidebarTrigger } from "@/components/ui/sidebar"
 import { ReviewsDataTable } from "@/components/dashboard/reviews-table/data-table"
 import { reviewData } from "@/components/dashboard/reviews-table/data"
+import { CreateProjectWizard } from "@/components/create-project-wizard"
+import { CreateReviewWizard } from "@/components/create-review-wizard"
+import { getProjectSummaries } from "@/lib/mock/projects"
+import { Search } from "lucide-react"
 
 export default function Page() {
+  const projectSummaries = getProjectSummaries()
+  const totalClosedIssues = projectSummaries.reduce(
+    (count, summary) => count + summary.metrics.closedIssues,
+    0,
+  )
+
   return (
-    <SidebarProvider>
-      <AppSidebar />
-      <SidebarInset>
-        <header className="flex h-16 shrink-0 items-center gap-2 border-b transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
-          <div className="flex w-full items-center justify-between gap-2 px-4">
+    <div className="flex flex-1 flex-col">
+      <header className="flex h-16 shrink-0 items-center gap-2 border-b transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
+          <div className="flex w-full items-center justify-between gap-4 px-4">
             <div className="flex items-center gap-2">
               <SidebarTrigger className="-ml-1" />
               <Separator
@@ -56,6 +60,17 @@ export default function Page() {
                   </BreadcrumbItem>
                 </BreadcrumbList>
               </Breadcrumb>
+            </div>
+            <div className="flex flex-1 justify-center">
+              <div className="relative w-full max-w-md">
+                <Search className="text-muted-foreground absolute left-3 top-1/2 size-4 -translate-y-1/2" />
+                <Input
+                  type="search"
+                  placeholder="Search your workspace"
+                  aria-label="Search workspace"
+                  className="pl-9"
+                />
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <DropdownMenu>
@@ -90,8 +105,8 @@ export default function Page() {
               </DropdownMenu>
             </div>
           </div>
-        </header>
-        <div className="flex flex-1 flex-col gap-6 p-6 pt-4">
+      </header>
+      <div className="flex flex-1 flex-col gap-6 p-6 pt-4">
           <section className="space-y-1">
             <h1 className="text-2xl font-semibold tracking-tight">Welcome to Redlines Dashboard</h1>
             <p className="text-muted-foreground text-sm">
@@ -124,22 +139,12 @@ export default function Page() {
             </Card>
             <Card>
               <CardHeader>
-                <CardTitle>Upcoming Deadlines</CardTitle>
-                <CardDescription>Next milestone reminders</CardDescription>
+                <CardTitle>Closed Issues</CardTitle>
+                <CardDescription>Total resolved by your organization</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-2 text-sm">
-                <p className="flex items-center justify-between">
-                  <span>Site plan package</span>
-                  <span className="text-muted-foreground">Oct 04</span>
-                </p>
-                <p className="flex items-center justify-between">
-                  <span>MEP coordination</span>
-                  <span className="text-muted-foreground">Oct 07</span>
-                </p>
-                <p className="flex items-center justify-between">
-                  <span>Final markups</span>
-                  <span className="text-muted-foreground">Oct 12</span>
-                </p>
+              <CardContent>
+                <p className="text-3xl font-semibold">{totalClosedIssues}</p>
+                <p className="text-muted-foreground text-xs">Tracking all teams across the workspace</p>
               </CardContent>
             </Card>
           </section>
@@ -189,20 +194,8 @@ export default function Page() {
                 <CardDescription>Use the dropdowns below to imagine workflow steps</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button className="w-full justify-between" variant="secondary">
-                      Start new review
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent className="w-56">
-                    <DropdownMenuLabel>Select template</DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem>Architectural set</DropdownMenuItem>
-                    <DropdownMenuItem>Structural markup</DropdownMenuItem>
-                    <DropdownMenuItem>Client comments</DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                <CreateProjectWizard />
+                <CreateReviewWizard />
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button className="w-full justify-between" variant="outline">
@@ -239,8 +232,7 @@ export default function Page() {
             </div>
             <ReviewsDataTable data={reviewData} />
           </section>
-        </div>
-      </SidebarInset>
-    </SidebarProvider>
+      </div>
+    </div>
   )
 }

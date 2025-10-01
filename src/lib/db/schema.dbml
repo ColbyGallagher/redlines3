@@ -1,0 +1,134 @@
+// title
+title Engineering Design Review Application Data Model
+
+// tables
+users [icon: user, color: yellow]{
+  id string pk
+  first_name string
+  last_name string
+  language string
+  email string
+  job_title string
+}
+
+companies [icon: briefcase, color: orange]{
+  id string pk
+  name string
+}
+
+user_companies [icon: users, color: lightblue]{
+  id string pk
+  user_id string
+  company_id string
+  active boolean // indicates which company the user is currently using
+}
+
+projects [icon: folder, color: blue]{
+  id string pk
+  project_number string
+  project_name string
+  project_location string // map coordinates
+}
+
+project_users [icon: users, color: lightblue]{
+  id string pk
+  project_id string
+  user_id string
+  role string
+}
+
+reviews [icon: check-square, color: green]{
+  id string pk
+  review_name string
+  review_number string
+  milestone string
+  due_date_client_sme_comments date
+  due_date_issue_comments_consultant date
+  due_date_issue_replies_client date
+  project_id string
+}
+
+review_users [icon: user-check, color: lightgreen]{
+  id string pk
+  review_id string
+  user_id string
+  role string
+}
+
+documents [icon: file-text, color: purple]{
+  id string pk
+  document_name string
+  document_code string
+  state string
+  milestone string
+  suitability string
+  version string
+  revision string
+  review_id string
+  project_id string
+}
+
+issues [icon: alert-circle, color: red]{
+  id string pk
+  issue_number string
+  date_created timestamp
+  date_modified timestamp
+  created_by_user_id string
+  modified_by_user_id string
+  comment string
+  discipline string
+  importance string
+  document_id string
+  review_id string
+  project_id string
+  comment_coordinates string // (x,y)
+  page_number int
+  ifc_element_id string
+  status string
+}
+
+// relationships
+user_companies.user_id > users.id
+user_companies.company_id > companies.id
+
+project_users.project_id > projects.id
+project_users.user_id > users.id
+
+review_users.review_id > reviews.id
+review_users.user_id > users.id
+
+reviews.project_id > projects.id
+
+documents.review_id > reviews.id
+documents.project_id > projects.id
+
+issues.document_id > documents.id
+issues.review_id > reviews.id
+issues.project_id > projects.id
+issues.created_by_user_id > users.id
+issues.modified_by_user_id > users.id
+
+// users to projects (via project_users)
+users.id <> projects.id
+
+// users to reviews (via review_users)
+users.id <> reviews.id
+
+// users to issues (created/modified)
+users.id <> issues.id
+
+// projects to issues
+projects.id <> issues.id
+
+// projects to documents
+projects.id <> documents.id
+
+// reviews to issues
+reviews.id <> issues.id
+
+// reviews to documents
+reviews.id <> documents.id
+
+// documents to issues
+documents.id <> issues.id
+
