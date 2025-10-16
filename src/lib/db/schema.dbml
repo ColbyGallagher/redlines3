@@ -3,7 +3,7 @@ title Engineering Design Review Application Data Model
 
 // tables
 users [icon: user, color: yellow]{
-  id string pk
+  id uuid pk
   first_name string
   last_name string
   language string
@@ -12,51 +12,51 @@ users [icon: user, color: yellow]{
 }
 
 companies [icon: briefcase, color: orange]{
-  id string pk
+  id uuid pk
   name string
 }
 
 user_companies [icon: users, color: lightblue]{
-  id string pk
+  id uuid pk
   user_id string
   company_id string
   active boolean // indicates which company the user is currently using
 }
 
 projects [icon: folder, color: blue]{
-  id string pk
+  id uuid pk
   project_number string
   project_name string
   project_location string // map coordinates
 }
 
 project_users [icon: users, color: lightblue]{
-  id string pk
-  project_id string
-  user_id string
+  id uuid pk
+  project_id uuid
+  user_id uuid
   role string
 }
 
 reviews [icon: check-square, color: green]{
-  id string pk
+  id uuid pk
   review_name string
   review_number string
   milestone string
   due_date_client_sme_comments date
   due_date_issue_comments_consultant date
   due_date_issue_replies_client date
-  project_id string
+  project_id uuid
 }
 
 review_users [icon: user-check, color: lightgreen]{
-  id string pk
-  review_id string
-  user_id string
+  id uuid pk
+  review_id uuid
+  user_id uuid
   role string
 }
 
 documents [icon: file-text, color: purple]{
-  id string pk
+  id uuid pk
   document_name string
   document_code string
   state string
@@ -64,23 +64,37 @@ documents [icon: file-text, color: purple]{
   suitability string
   version string
   revision string
-  review_id string
-  project_id string
+  pdf_url string
+  review_id uuid
+  project_id uuid
+}
+
+annotations [icon: pen-square, color: pink]{
+  id uuid pk
+  review_id uuid
+  document_id uuid
+  page int
+  x numeric
+  y numeric
+  content string
+  color string
+  created_by string
+  created_at timestamp
 }
 
 issues [icon: alert-circle, color: red]{
-  id string pk
+  id uuid pk
   issue_number string
   date_created timestamp
   date_modified timestamp
-  created_by_user_id string
-  modified_by_user_id string
+  created_by_user_id uuid
+  modified_by_user_id uuid
   comment string
   discipline string
   importance string
-  document_id string
-  review_id string
-  project_id string
+  document_id uuid
+  review_id uuid
+  project_id uuid
   comment_coordinates string // (x,y)
   page_number int
   ifc_element_id string
@@ -101,6 +115,9 @@ reviews.project_id > projects.id
 
 documents.review_id > reviews.id
 documents.project_id > projects.id
+
+annotations.review_id > reviews.id
+annotations.document_id > documents.id
 
 issues.document_id > documents.id
 issues.review_id > reviews.id

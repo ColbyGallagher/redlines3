@@ -19,11 +19,29 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet"
 import { Textarea } from "@/components/ui/textarea"
-import type { ProjectSummary } from "@/lib/mock/projects"
 
 type ProjectSettingsSheetProps = {
   projectId: string
   trigger?: ReactNode
+}
+
+type ProjectSettings = {
+  availableMilestones: string[]
+  selectedMilestones: string[]
+  titleblockTemplateUrl?: string
+  documentNamingConvention: string
+  documentCodeLocation: string
+  statuses: string[]
+  importances: string[]
+  disciplines: string[]
+  states: string[]
+  suitabilities: string[]
+  defaultReviewTimes: { stage: string; days: number }[]
+  defaultResponsePeriods: { role: string; days: number }[]
+}
+
+type ProjectSettingsResponse = {
+  settings: ProjectSettings
 }
 
 type SettingsFormState = {
@@ -41,7 +59,7 @@ type SettingsFormState = {
   titleblockFile?: File | null
 }
 
-function createInitialFormState(settings: ProjectSummary["settings"]): SettingsFormState {
+function createInitialFormState(settings: ProjectSettings): SettingsFormState {
   return {
     selectedMilestones: new Set(settings.selectedMilestones),
     documentNamingConvention: settings.documentNamingConvention,
@@ -60,16 +78,33 @@ function createInitialFormState(settings: ProjectSummary["settings"]): SettingsF
 
 export function ProjectSettingsSheet({ projectId, trigger }: ProjectSettingsSheetProps) {
   const [open, setOpen] = React.useState(false)
-  const [settings, setSettings] = React.useState<ProjectSummary["settings"] | null>(null)
+  const [settings, setSettings] = React.useState<ProjectSettings | null>(null)
   const [formState, setFormState] = React.useState<SettingsFormState | null>(null)
 
   React.useEffect(() => {
     async function loadSettings() {
-      const { getProjectSummaryById } = await import("@/lib/mock/projects")
-      const summary = getProjectSummaryById(projectId)
-      if (summary) {
-        setSettings(summary.settings)
-        setFormState(createInitialFormState(summary.settings))
+      try {
+        const response = await fetch(`/api/projects/${projectId}/settings`, {
+          credentials: "include",
+          headers: {
+            Accept: "application/json",
+          },
+        })
+
+        if (!response.ok) {
+          const payload = await response
+            .json()
+            .catch(() => ({ error: `Request failed with status ${response.status}` }))
+          throw new Error(typeof payload.error === "string" ? payload.error : `Request failed with status ${response.status}`)
+        }
+
+        const data: ProjectSettingsResponse = await response.json()
+        setSettings(data.settings)
+        setFormState(createInitialFormState(data.settings))
+      } catch (error) {
+        console.error("Failed to load project settings", error)
+        setSettings(null)
+        setFormState(null)
       }
     }
 

@@ -9,7 +9,7 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
-import type { ProjectSummary } from "@/lib/mock/projects"
+import type { ProjectSummary } from "@/lib/data/projects"
 
 type ProjectReviewsListProps = {
   summary: ProjectSummary

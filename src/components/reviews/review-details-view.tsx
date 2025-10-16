@@ -1,6 +1,7 @@
 "use client"
 
 import { useMemo } from "react"
+import { useRouter } from "next/navigation"
 import { Calendar, Clock, Download, FileText, MapPin, Users } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
@@ -16,7 +17,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { ReviewDetail } from "@/lib/mock/review-details"
+import type { ReviewDetail } from "@/lib/data/reviews"
 import { cn } from "@/lib/utils"
 
 type ReviewDetailsViewProps = {
@@ -38,6 +39,7 @@ const importanceBadgeVariant: Record<string, "default" | "secondary" | "destruct
 }
 
 export function ReviewDetailsView({ review }: ReviewDetailsViewProps) {
+  const router = useRouter()
   const statusBadge = statusVariantMap[review.status]
 
   const documentColumns = useMemo(
@@ -208,7 +210,12 @@ export function ReviewDetailsView({ review }: ReviewDetailsViewProps) {
                   <TableCell>{document.fileSize}</TableCell>
                   <TableCell>{formatDate(document.uploadedAt)}</TableCell>
                   <TableCell className="text-right">
-                    <Button variant="ghost" size="sm" className="gap-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="gap-1"
+                      onClick={() => router.push(`/reviews/${review.id}/documents/${document.id}`)}
+                    >
                       <FileText className="size-4" />
                       Preview
                     </Button>
@@ -252,7 +259,7 @@ export function ReviewDetailsView({ review }: ReviewDetailsViewProps) {
                     <Badge variant={importanceBadgeVariant[issue.importance] ?? "secondary"}>{issue.importance}</Badge>
                   </TableCell>
                   <TableCell>{issue.discipline}</TableCell>
-                  <TableCell>{lookupDocumentName(review, issue.documentId)}</TableCell>
+                <TableCell>{lookupDocumentName(review, issue.documentId)}</TableCell>
                   <TableCell>{issue.pageNumber}</TableCell>
                   <TableCell>{issue.commentCoordinates}</TableCell>
                   <TableCell>{formatDate(issue.dateCreated)}</TableCell>

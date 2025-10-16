@@ -38,7 +38,10 @@ export default function RootLayout({
             enableSystem
             disableTransitionOnChange
           >
-          <AppShell>{children}</AppShell>
+          <AppShell>
+            <div id="annotation-popovers" className="fixed left-0 top-0 z-[9999]" />
+            {children}
+          </AppShell>
           </ThemeProvider>
       </body>
     </html>

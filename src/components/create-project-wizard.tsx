@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { useRouter } from "next/navigation"
 
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -18,19 +19,32 @@ import {
 } from "@/components/ui/sheet"
 
 type ContractType = "Concept design" | "Detailed design" | "Construction"
+type ProjectStatus = "Planning" | "Active" | "On hold" | "Completed"
 
 type CreateProjectFormState = {
   projectName: string
   projectNumber: string
-  projectStatus: string
+  projectLocation: string
+  status: ProjectStatus | ""
   parentProject: string
   contractType: ContractType | ""
+}
+
+type CreateProjectPayload = {
+  projectName: string
+  projectNumber: string
+  projectLocation: string | null
+  status: ProjectStatus | null
+  parentProject: string | null
+  contractType: ContractType | null
+  teamAssignments: Record<string, string[]>
 }
 
 const initialFormState: CreateProjectFormState = {
   projectName: "",
   projectNumber: "",
-  projectStatus: "",
+  projectLocation: "",
+  status: "",
   parentProject: "",
   contractType: "",
 }
@@ -41,6 +55,13 @@ const contractTypes: ContractType[] = [
   "Construction",
 ]
 
+const projectStatuses: ProjectStatus[] = [
+  "Planning",
+  "Active",
+  "On hold",
+  "Completed",
+]
+
 const placeholderTeams: Record<string, string[]> = {
   Structures: ["Alex Green", "Jordan Wu", "Priya Shah"],
   "Project Management": ["Maya Lopez", "Chris Bennett", "Nora Patel"],
@@ -48,7 +69,20 @@ const placeholderTeams: Record<string, string[]> = {
   Electrical: ["Reese Morgan", "Taylor King"],
 }
 
+type CreateProjectResponse = {
+  project: {
+    id: string
+    project_name: string
+    project_number: string
+    project_location: string | null
+    status: string | null
+    parent_project: string | null
+    contract_type: string | null
+  }
+}
+
 export function CreateProjectWizard() {
+  const router = useRouter()
   const [open, setOpen] = React.useState(false)
   const [step, setStep] = React.useState<1 | 2>(1)
   const [formState, setFormState] = React.useState<CreateProjectFormState>(
@@ -57,6 +91,8 @@ export function CreateProjectWizard() {
   const [selectedUsers, setSelectedUsers] = React.useState<
     Record<string, string[]>
   >({})
+  const [isSubmitting, setIsSubmitting] = React.useState(false)
+  const [errorMessage, setErrorMessage] = React.useState<string | null>(null)
 
   const handleOpenChange = (nextOpen: boolean) => {
     setOpen(nextOpen)
@@ -70,6 +106,8 @@ export function CreateProjectWizard() {
     setStep(1)
     setFormState(initialFormState)
     setSelectedUsers({})
+    setIsSubmitting(false)
+    setErrorMessage(null)
   }
 
   const handleInputChange = (
@@ -104,6 +142,7 @@ export function CreateProjectWizard() {
   }
 
   const handleNext = () => {
+    setErrorMessage(null)
     setStep(2)
   }
 
@@ -111,14 +150,66 @@ export function CreateProjectWizard() {
     setStep(1)
   }
 
-  const handleComplete = () => {
-    console.log("Project created", {
-      details: formState,
-      teamAssignments: selectedUsers,
-    })
+  const handleComplete = async () => {
+    if (isSubmitting) return
 
-    setOpen(false)
-    resetWizard()
+    const trimmedName = formState.projectName.trim()
+    const trimmedNumber = formState.projectNumber.trim()
+
+    if (!trimmedName || !trimmedNumber) {
+      setErrorMessage("Project name and number are required.")
+      setStep(1)
+      return
+    }
+
+    setIsSubmitting(true)
+    setErrorMessage(null)
+
+    try {
+      const payload: CreateProjectPayload = {
+        projectName: trimmedName,
+        projectNumber: trimmedNumber,
+        projectLocation: formState.projectLocation.trim() || null,
+        status: formState.status || null,
+        parentProject: formState.parentProject.trim() || null,
+        contractType: formState.contractType || null,
+        teamAssignments: selectedUsers,
+      }
+
+      const response = await fetch("/api/projects", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      })
+
+      const result = (await response
+        .json()
+        .catch(() => ({}))) as Partial<CreateProjectResponse>
+
+      if (!response.ok) {
+        const message =
+          typeof result.error === "string" && result.error.length
+            ? result.error
+            : "Unable to create project."
+        throw new Error(message)
+      }
+
+      if (!result?.project?.id) {
+        throw new Error("Project created but response was unexpected.")
+      }
+
+      setOpen(false)
+      resetWizard()
+      router.push(`/projects/${result.project.id}?created=1`)
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to create project."
+      setErrorMessage(message)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -172,15 +263,36 @@ export function CreateProjectWizard() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="project-status">Project status</Label>
-                  <Input
+                  <select
                     id="project-status"
-                    placeholder="e.g. In planning"
-                    value={formState.projectStatus}
+                    value={formState.status}
                     onChange={(event) =>
-                      handleInputChange("projectStatus", event.target.value)
+                      handleInputChange(
+                        "status",
+                        event.target.value as ProjectStatus | ""
+                      )
                     }
-                  />
+                    className="border-input focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] dark:bg-input/30 text-foreground bg-background h-9 w-full rounded-md border px-3 text-sm shadow-xs transition-colors outline-none"
+                  >
+                    <option value="">Select a status</option>
+                    {projectStatuses.map((status) => (
+                      <option key={status} value={status}>
+                        {status}
+                      </option>
+                    ))}
+                  </select>
                 </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="project-location">Project location</Label>
+                <Input
+                  id="project-location"
+                  placeholder="e.g. Wellington, NZ"
+                  value={formState.projectLocation}
+                  onChange={(event) =>
+                    handleInputChange("projectLocation", event.target.value)
+                  }
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="parent-project">
@@ -274,23 +386,30 @@ export function CreateProjectWizard() {
                   Back
                 </Button>
               ) : (
-                <Button variant="ghost" onClick={() => setOpen(false)}>
+                <Button
+                  variant="ghost"
+                  onClick={() => setOpen(false)}
+                  disabled={isSubmitting}
+                >
                   Cancel
                 </Button>
               )}
             </div>
             <div className="flex gap-2 md:ml-auto">
               {step === 1 ? (
-                <Button onClick={handleNext}>
+                <Button onClick={handleNext} disabled={isSubmitting}>
                   Next
                 </Button>
               ) : (
-                <Button onClick={handleComplete}>
-                  Complete
+                <Button onClick={handleComplete} disabled={isSubmitting}>
+                  {isSubmitting ? "Creating..." : "Complete"}
                 </Button>
               )}
             </div>
           </div>
+          {errorMessage ? (
+            <p className="text-destructive text-sm font-medium">{errorMessage}</p>
+          ) : null}
         </SheetFooter>
       </SheetContent>
     </Sheet>

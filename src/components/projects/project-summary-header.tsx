@@ -1,4 +1,5 @@
 import type { ReactNode } from "react"
+import { CheckCircle2 } from "lucide-react"
 
 import {
   Breadcrumb,
@@ -17,11 +18,12 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
-import type { ProjectSummary } from "@/lib/mock/projects"
+import type { ProjectSummary } from "@/lib/data/projects"
 
 type ProjectSummaryHeaderProps = {
   summary: ProjectSummary
   actions?: ReactNode
+  successMessage?: string
 }
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
@@ -42,7 +44,7 @@ function formatPlural(count: number, singular: string, plural: string) {
   return `${count} ${count === 1 ? singular : plural}`
 }
 
-export function ProjectSummaryHeader({ summary, actions }: ProjectSummaryHeaderProps) {
+export function ProjectSummaryHeader({ summary, actions, successMessage }: ProjectSummaryHeaderProps) {
   const lastUpdatedLabel = formatLastUpdated(summary.lastUpdated)
 
   const metricsCards = [
@@ -66,6 +68,12 @@ export function ProjectSummaryHeader({ summary, actions }: ProjectSummaryHeaderP
   return (
     <div className="border-b bg-background">
       <div className="flex flex-col gap-6 p-6 pb-4">
+        {successMessage ? (
+          <div className="flex items-start gap-3 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-200">
+            <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0" />
+            <p className="text-sm font-medium leading-relaxed">{successMessage}</p>
+          </div>
+        ) : null}
         <header className="flex flex-wrap items-start justify-between gap-4">
           <div className="space-y-3">
             <Breadcrumb>

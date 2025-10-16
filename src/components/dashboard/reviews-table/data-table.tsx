@@ -33,11 +33,11 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { columns } from "./columns"
-import { ReviewRecord } from "./data"
+import type { ReviewSummary } from "@/lib/data/reviews"
 import { FilterBar } from "./filter-bar"
 
 type DataTableProps = {
-  data: ReviewRecord[]
+  data: ReviewSummary[]
 }
 
 export function ReviewsDataTable({ data }: DataTableProps) {

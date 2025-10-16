@@ -26,14 +26,17 @@ import {
 import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { ReviewsDataTable } from "@/components/dashboard/reviews-table/data-table"
-import { reviewData } from "@/components/dashboard/reviews-table/data"
 import { CreateProjectWizard } from "@/components/create-project-wizard"
 import { CreateReviewWizard } from "@/components/create-review-wizard"
-import { getProjectSummaries } from "@/lib/mock/projects"
+import { getProjectSummaries } from "@/lib/data/projects"
+import { getReviewSummaries } from "@/lib/data/reviews"
 import { Search } from "lucide-react"
 
-export default function Page() {
-  const projectSummaries = getProjectSummaries()
+export default async function Page() {
+  const [projectSummaries, reviewSummaries] = await Promise.all([
+    getProjectSummaries(),
+    getReviewSummaries(),
+  ])
   const totalClosedIssues = projectSummaries.reduce(
     (count, summary) => count + summary.metrics.closedIssues,
     0,
@@ -230,7 +233,7 @@ export default function Page() {
                 Explore reviews with column controls, row selection, and quick filters.
               </p>
             </div>
-            <ReviewsDataTable data={reviewData} />
+            <ReviewsDataTable data={reviewSummaries} />
           </section>
       </div>
     </div>

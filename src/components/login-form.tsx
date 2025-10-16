@@ -1,16 +1,33 @@
 "use client";
 
+import { useState } from "react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { supabase } from "@/lib/supabase/client"
+import { SignupModal } from "@/components/signup-modal"
 
-export function LoginForm({
-  className,
-  ...props
-}: React.ComponentProps<"form">) {
+export function LoginForm({ className, ...props }: React.ComponentProps<"form">) {
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const onSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError(null)
+    setLoading(true)
+    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    setLoading(false)
+    if (error) {
+      setError(error.message)
+      return
+    }
+    window.location.href = "/dashboard"
+  }
   return (
-    <form className={cn("flex flex-col gap-6", className)} {...props}>
+    <form className={cn("flex flex-col gap-6", className)} onSubmit={onSubmit} {...props}>
       <div className="flex flex-col items-center gap-2 text-center">
         <h1 className="text-2xl font-bold">Login to your account</h1>
         <p className="text-muted-foreground text-sm text-balance">
@@ -20,65 +37,27 @@ export function LoginForm({
       <div className="grid gap-6">
         <div className="grid gap-3">
           <Label htmlFor="email">Email</Label>
-          <Input id="email" type="email" placeholder="colby@example.com" required />
+          <Input id="email" type="email" placeholder="colby@example.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
         </div>
         <div className="grid gap-3">
           <div className="flex items-center">
             <Label htmlFor="password">Password</Label>
-            <a
-              href="#"
-              className="ml-auto text-sm underline-offset-4 hover:underline"
-            >
-              Forgot your password?
-            </a>
+            <a href="/reset-password" className="ml-auto text-sm underline-offset-4 hover:underline">Forgot your password?</a>
           </div>
-          <Input id="password" type="password" required />
+          <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
         </div>
-        <Button type="submit" className="w-full" onClick={(e) => {
-          e.preventDefault();
-          const email = (document.getElementById('email') as HTMLInputElement)?.value;
-          const password = (document.getElementById('password') as HTMLInputElement)?.value;
-          
-          // Fake credentials for development
-          if (email === 'dev@test.com' && password === 'password') {
-            alert('Login successful! Redirecting...');
-            // Add your redirect logic here
-            window.location.href = '/dashboard'; // or wherever you want to go
-          } else {
-            alert('Invalid credentials. Use dev@test.com / password for development');
-          }
-        }}>
-          Login
-        </Button>
+        {error ? <p className="text-sm text-red-600">{error}</p> : null}
+        <Button type="submit" className="w-full" disabled={loading}>{loading ? "Signing in..." : "Login"}</Button>
         <div className="after:border-border relative text-center text-sm after:absolute after:inset-0 after:top-1/2 after:z-0 after:flex after:items-center after:border-t">
           <span className="bg-background text-muted-foreground relative z-10 px-2">
             Or continue with
           </span>
         </div>
-        <Button variant="outline" className="w-full">
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-                    <path
-                      d="M12.48 10.92v3.28h7.84c-.24 1.84-.853 3.187-1.787 4.133-1.147 1.147-2.933 2.4-6.053 2.4-4.827 0-8.6-3.893-8.6-8.72s3.773-8.72 8.6-8.72c2.6 0 4.507 1.027 5.907 2.347l2.307-2.307C18.747 1.44 16.133 0 12.48 0 5.867 0 .307 5.387.307 12s5.56 12 12.173 12c3.573 0 6.267-1.173 8.373-3.36 2.16-2.16 2.84-5.213 2.84-7.667 0-.76-.053-1.467-.173-2.053H12.48z"
-                      fill="currentColor"
-                    />
-                  </svg>
-                  Login with Google
-        </Button>
-        <Button variant="outline" className="w-full">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-            <path
-              d="M11.4 24H0V12.6h11.4V24zM24 24H12.6V12.6H24V24zM11.4 11.4H0V0h11.4v11.4zM24 11.4H12.6V0H24v11.4z"
-              fill="currentColor"
-            />
-          </svg>
-          Login with Microsoft
-        </Button>
+        {/* OAuth buttons intentionally omitted as requested */}
       </div>
       <div className="text-center text-sm">
-        Don&apos;t have an account?{" "}
-        <a href="#" className="underline underline-offset-4">
-          Sign up
-        </a>
+        Don&apos;t have an account? {" "}
+        <SignupModal triggerClassName="underline underline-offset-4 p-0 h-auto" />
       </div>
       <div className="text-muted-foreground *:[a]:hover:text-primary text-center text-xs text-balance *:[a]:underline *:[a]:underline-offset-4">
         By clicking continue, you agree to our <a href="#">Terms of Service</a>{" "}

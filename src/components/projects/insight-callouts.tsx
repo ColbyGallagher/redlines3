@@ -8,7 +8,7 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import type { ProjectInsight } from "@/lib/mock/projects"
+import type { ProjectInsight } from "@/lib/data/projects"
 
 type InsightCalloutsProps = {
   insights: ProjectInsight[]

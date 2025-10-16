@@ -1,6 +1,5 @@
 "use client"
 
-import * as React from "react"
 import {
   BookOpen,
   ChevronRight,
@@ -37,12 +36,27 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
+import { useEffect, useMemo, useState } from "react"
 import { NavProjects } from "@/components/nav-projects"
 import { ProjectSettingsSheet } from "@/components/projects/project-settings-sheet"
-import { getProjectSummaries, getProjectSummaryById } from "@/lib/mock/projects"
-import { reviewDetails } from "@/lib/mock/review-details"
 
-const projectSummaries = getProjectSummaries()
+type SidebarProject = {
+  id: string
+  name: string
+  url: string
+}
+
+type SidebarReview = {
+  id: string
+  name: string
+  href: string
+}
+
+type SidebarApiResponse = {
+  projects: SidebarProject[]
+  reviews: SidebarReview[]
+}
+
 const data = {
   user: {
     name: "shadcn",
@@ -70,41 +84,62 @@ const data = {
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname()
+  const [projects, setProjects] = useState<SidebarProject[]>([])
+  const [recentReviews, setRecentReviews] = useState<SidebarReview[]>([])
+  const [sidebarError, setSidebarError] = useState<string | null>(null)
+  const [isLoadingSidebar, setIsLoadingSidebar] = useState(true)
 
-  const isOverviewActive = React.useMemo(() => {
+  useEffect(() => {
+    async function loadSidebarData() {
+      try {
+        const response = await fetch("/api/sidebar", {
+          cache: "no-store",
+          headers: {
+            Accept: "application/json",
+          },
+        })
+
+        if (!response.ok) {
+          const payload = await response
+            .json()
+            .catch(() => ({ error: `Request failed with status ${response.status}` }))
+          setProjects([])
+          setRecentReviews([])
+          setSidebarError(
+            typeof payload.error === "string"
+              ? payload.error
+              : `Request failed with status ${response.status}`,
+          )
+          setProjects([])
+          setRecentReviews([])
+          return
+        }
+
+        const payload = (await response.json()) as SidebarApiResponse
+        setProjects(payload.projects)
+        setRecentReviews(payload.reviews)
+        setSidebarError(null)
+      } catch (error) {
+        console.error("Failed to load sidebar data", error)
+        setSidebarError(error instanceof Error ? error.message : "Unable to load sidebar content")
+      } finally {
+        setIsLoadingSidebar(false)
+      }
+    }
+
+    void loadSidebarData()
+  }, [])
+
+  const isOverviewActive = useMemo(() => {
     if (!pathname) return false
     return pathname === "/" || pathname.startsWith("/dashboard")
   }, [pathname])
 
-  const activeProjectId = React.useMemo(() => {
+  const activeProjectId = useMemo(() => {
     if (!pathname) return undefined
     const match = pathname.match(/^\/projects\/([^/]+)/)
     return match ? match[1] : undefined
   }, [pathname])
-
-  const activeProject = React.useMemo(() => {
-    if (!activeProjectId) return undefined
-    return getProjectSummaryById(activeProjectId)
-  }, [activeProjectId])
-
-  const recentReviews = React.useMemo(() => {
-    return [...reviewDetails]
-      .sort((a, b) => {
-        const aTime = new Date(a.lastUpdated).getTime()
-        const bTime = new Date(b.lastUpdated).getTime()
-
-        if (Number.isNaN(aTime) && Number.isNaN(bTime)) return 0
-        if (Number.isNaN(aTime)) return 1
-        if (Number.isNaN(bTime)) return -1
-        return bTime - aTime
-      })
-      .slice(0, 5)
-      .map((review) => ({
-        id: review.id,
-        name: review.reviewName,
-        href: `/reviews/${review.id}`,
-      }))
-  }, [])
 
   return (
     <Sidebar collapsible="icon" {...props}>
@@ -125,21 +160,19 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           </SidebarMenu>
         </SidebarGroup>
 
-        <NavProjects
-          projects={projectSummaries.map((summary) => ({
-            id: summary.project.id,
-            name: summary.project.projectName,
-            url: `/projects/${summary.project.id}`,
-          }))}
-        />
+        <NavProjects projects={projects.map((project) => ({
+          id: project.id,
+          name: project.name,
+          url: `/projects/${project.id}`,
+        }))} />
 
-        {activeProject ? (
+        {activeProjectId ? (
           <SidebarGroup className="group-data-[collapsible=icon]:hidden">
             <SidebarGroupLabel>Project tools</SidebarGroupLabel>
             <SidebarMenu>
               <SidebarMenuItem>
                 <ProjectSettingsSheet
-                  projectId={activeProject.project.id}
+                  projectId={activeProjectId}
                   trigger={
                     <SidebarMenuButton tooltip="Project settings">
                       <Settings2 />

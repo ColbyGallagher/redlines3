@@ -27,7 +27,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { getProjectSummaries } from "@/lib/mock/projects"
+import { getProjectSummaries } from "@/lib/data/projects"
 
 function formatDate(value: string) {
   if (!value || value === new Date(0).toISOString()) {
@@ -49,8 +49,8 @@ function formatDate(value: string) {
   }).format(date)
 }
 
-export default function ProjectsPage() {
-  const projectSummaries = getProjectSummaries()
+export default async function ProjectsPage() {
+  const projectSummaries = await getProjectSummaries()
 
   return (
     <div className="flex flex-1 flex-col">

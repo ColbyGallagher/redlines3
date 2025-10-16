@@ -13,7 +13,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { ReviewRecord } from "./data"
+import type { ReviewSummary } from "@/lib/data/reviews"
 
 const MONTH_LABELS = [
   "Jan",
@@ -44,7 +44,7 @@ function formatDateLabel(value: string) {
   return `${MONTH_LABELS[monthIndex]} ${dayNumber}, ${year}`
 }
 
-export const columns: ColumnDef<ReviewRecord>[] = [
+export const columns: ColumnDef<ReviewSummary>[] = [
   {
     id: "select",
     header: ({ table }) => (
@@ -147,19 +147,6 @@ export const columns: ColumnDef<ReviewRecord>[] = [
         className="-ml-2 flex items-center gap-1"
       >
         Milestone
-        <ArrowUpDown className="size-4" />
-      </Button>
-    ),
-  },
-  {
-    accessorKey: "coordinator",
-    header: ({ column }) => (
-      <Button
-        variant="ghost"
-        onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-        className="-ml-2 flex items-center gap-1"
-      >
-        Review coordinator
         <ArrowUpDown className="size-4" />
       </Button>
     ),

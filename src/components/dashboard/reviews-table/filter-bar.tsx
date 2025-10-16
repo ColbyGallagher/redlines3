@@ -8,14 +8,14 @@ import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
-import { ReviewRecord } from "./data"
+import type { ReviewSummary } from "@/lib/data/reviews"
 
 type FilterBarProps = {
-  table: Table<ReviewRecord>
+  table: Table<ReviewSummary>
 }
 
 export function FilterBar({ table }: FilterBarProps) {
-  const searchableColumns = useMemo(() => ["reviewName", "project", "coordinator"], [])
+  const searchableColumns = useMemo(() => ["reviewName", "project"], [])
 
   return (
     <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
