@@ -1,6 +1,6 @@
+import Image from "next/image"
 import { GalleryVerticalEnd } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
-
 import { LoginForm } from "@/components/login-form"
 
 export default function LoginPage() {
@@ -23,10 +23,13 @@ export default function LoginPage() {
         </div>
       </div>
       <div className="bg-muted relative hidden lg:block">
-        <img
+        <Image
           src="/EngineersReviewing.png"
-          alt="Image"
-          className="absolute inset-0 h-full w-full object-cover dark:brightness-[0.2] dark:grayscale"
+          alt="Engineers reviewing design documents"
+          fill
+          priority
+          className="object-cover dark:brightness-[0.2] dark:grayscale"
+          sizes="50vw"
         />
       </div>
 

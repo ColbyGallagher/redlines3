@@ -1,22 +1,22 @@
 import "server-only"
 
-import { createServerClient } from "@supabase/ssr"
+import { createServerClient, type CookieOptions } from "@supabase/ssr"
 import { cookies as nextCookies } from "next/headers"
 import type { SupabaseClient } from "@supabase/supabase-js"
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
-export type SupabaseServerClient<TDatabase = Record<string, never>> = SupabaseClient<TDatabase, "public", any>
+export type SupabaseServerClient<TDatabase = Record<string, never>> = SupabaseClient<TDatabase, "public", Record<string, unknown>>
 
 type CookieAdapter = {
   get: (name: string) => { name: string; value: string } | undefined
   set: (
     name: string,
     value: string,
-    options?: { path?: string; maxAge?: number; httpOnly?: boolean; secure?: boolean; sameSite?: "lax" | "strict" | "none" },
+    options?: CookieOptions,
   ) => void
-  remove: (name: string, options?: { path?: string }) => void
+  remove: (name: string, options?: CookieOptions) => void
 }
 
 async function createDefaultCookieAdapter(): Promise<CookieAdapter> {
@@ -30,7 +30,7 @@ async function createDefaultCookieAdapter(): Promise<CookieAdapter> {
     set(name, value, options) {
       store.set(name, value, options)
     },
-    remove(name) {
+    remove(name, _options) {
       store.delete(name)
     },
   }
@@ -46,10 +46,10 @@ export async function createServerSupabaseClient<TDatabase = Record<string, neve
       get(name: string) {
         return cookies.get(name)?.value
       },
-      set(name: string, value: string, options: any) {
+      set(name: string, value: string, options: CookieOptions) {
         cookies.set(name, value, options)
       },
-      remove(name: string, options: any) {
+      remove(name: string, options: CookieOptions) {
         cookies.remove(name, options)
       },
     },

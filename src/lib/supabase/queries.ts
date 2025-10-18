@@ -10,9 +10,9 @@ import type {
   User,
 } from "@/lib/db/types"
 
-type CachedQuery<TArgs extends any[], TResult> = (...args: TArgs) => Promise<TResult>
+type CachedQuery<TArgs extends unknown[], TResult> = (...args: TArgs) => Promise<TResult>
 
-const cached = <TArgs extends any[], TResult>(key: string[], fn: CachedQuery<TArgs, TResult>) =>
+const cached = <TArgs extends unknown[], TResult>(key: string[], fn: CachedQuery<TArgs, TResult>) =>
   unstable_cache(fn, key, { tags: key })
 
 export type ProjectSummary = {
