@@ -31,9 +31,9 @@ type NormalizedReview = {
   reviewNumber: string
   milestone: string
   status: string
-  dueDateClientSmeComments?: string
-  dueDateIssueCommentsConsultant?: string
-  dueDateIssueRepliesClient?: string
+  dueDateSmeReview?: string
+  dueDateIssueComments?: string
+  dueDateReplies?: string
   project: {
     id: string
     projectNumber: string
@@ -168,9 +168,9 @@ function mapReview(row: ReviewWithRelations, project: ProjectRow): NormalizedRev
     reviewNumber: row.review_number,
     milestone: row.milestone ?? "Unspecified",
     status: row.status ?? "Draft",
-    dueDateClientSmeComments: row.due_date_client_sme_comments ?? undefined,
-    dueDateIssueCommentsConsultant: row.due_date_issue_comments_consultant ?? undefined,
-    dueDateIssueRepliesClient: row.due_date_issue_replies_client ?? undefined,
+    dueDateSmeReview: row.due_date_sme_review ?? undefined,
+    dueDateIssueComments: row.due_date_issue_comments ?? undefined,
+    dueDateReplies: row.due_date_replies ?? undefined,
     project: {
       id: project.id,
       projectNumber: project.project_number,
@@ -220,9 +220,9 @@ function parseDate(value: string | undefined | null): Date | undefined {
 
 function getPrimaryDueDate(review: NormalizedReview): PrimaryDueDate | undefined {
   const dueDates: Array<{ date?: Date; type: PrimaryDueDateType }> = [
-    { date: parseDate(review.dueDateClientSmeComments), type: "client" },
-    { date: parseDate(review.dueDateIssueCommentsConsultant), type: "consultant" },
-    { date: parseDate(review.dueDateIssueRepliesClient), type: "reply" },
+    { date: parseDate(review.dueDateSmeReview), type: "client" },
+    { date: parseDate(review.dueDateIssueComments), type: "consultant" },
+    { date: parseDate(review.dueDateReplies), type: "reply" },
   ]
 
   const validDates = dueDates.filter((entry): entry is { date: Date; type: PrimaryDueDateType } => Boolean(entry.date))

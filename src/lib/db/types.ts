@@ -15,9 +15,9 @@ export type Review = {
   review_name: string
   review_number: string
   milestone: string | null
-  due_date_client_sme_comments: string | null
-  due_date_issue_comments_consultant: string | null
-  due_date_issue_replies_client: string | null
+  due_date_sme_review: string | null
+  due_date_issue_comments: string | null
+  due_date_replies: string | null
   project_id: string
   status?: string | null
   created_at?: string | null

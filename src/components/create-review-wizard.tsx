@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { useRouter } from "next/navigation"
 
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -16,6 +17,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet"
+import { supabase } from "@/lib/supabase/client"
 import { Loader2, X } from "lucide-react"
 
 type ReviewFormState = {
@@ -28,11 +30,10 @@ type ReviewFormState = {
   dueConsultantReplies: string
 }
 
-type ProjectDirectory = {
+type ProjectOption = {
   id: string
   name: string
   code: string
-  roles: Record<string, string[]>
 }
 
 type ReviewUpload = {
@@ -66,42 +67,6 @@ const createInitialFormState = (): ReviewFormState => ({
   dueIssueConsultant: "",
   dueConsultantReplies: "",
 })
-
-const projectDirectory: ProjectDirectory[] = [
-  {
-    id: "proj-001",
-    name: "Riverside Connector",
-    code: "RC-2048",
-    roles: {
-      "Review Lead": ["Alex Green", "Maya Lopez"],
-      "Structural SME": ["Priya Shah", "Jordan Wu"],
-      "Electrical SME": ["Reese Morgan", "Taylor King"],
-      "Project Controls": ["Chris Bennett"],
-    },
-  },
-  {
-    id: "proj-002",
-    name: "Northern Corridor Upgrade",
-    code: "NC-301",
-    roles: {
-      "Review Lead": ["Samuel Lee"],
-      "Civil SME": ["Ivy Carter", "Noah Patel"],
-      "Client Liaison": ["Nora Patel"],
-      "Quality Assurance": ["Jordan Wu"],
-    },
-  },
-  {
-    id: "proj-003",
-    name: "Harbor Modernization",
-    code: "HM-118",
-    roles: {
-      "Review Lead": ["Alex Green"],
-      "Marine SME": ["Priya Shah", "Samuel Lee"],
-      "MEP SME": ["Taylor King"],
-      "Project Controls": ["Maya Lopez"],
-    },
-  },
-]
 
 const existingDocuments: ExistingDocument[] = [
   {
@@ -203,6 +168,7 @@ const recentReviewTemplates: RecentReviewTemplate[] = [
 ]
 
 export function CreateReviewWizard() {
+  const router = useRouter()
   const [open, setOpen] = React.useState(false)
   const [step, setStep] = React.useState<1 | 2>(1)
   const [formState, setFormState] = React.useState<ReviewFormState>(
@@ -216,6 +182,59 @@ export function CreateReviewWizard() {
   >([])
   const [uploads, setUploads] = React.useState<ReviewUpload[]>([])
   const [recentTemplateId, setRecentTemplateId] = React.useState<string>("")
+  const [projects, setProjects] = React.useState<ProjectOption[]>([])
+  const [projectsLoading, setProjectsLoading] = React.useState(false)
+  const [projectsError, setProjectsError] = React.useState<string | null>(null)
+  const [isSubmitting, setIsSubmitting] = React.useState(false)
+  const [submitError, setSubmitError] = React.useState<string | null>(null)
+
+  React.useEffect(() => {
+    let isMounted = true
+
+    const loadProjects = async () => {
+      setProjectsLoading(true)
+      setProjectsError(null)
+
+      try {
+        const { data, error } = await supabase
+          .from("projects")
+          .select("id, project_name, project_number")
+          .order("project_name", { ascending: true })
+
+        if (!isMounted) return
+
+        if (error) {
+          throw error
+        }
+
+        const mapped: ProjectOption[] = (data ?? []).map((project) => ({
+          id: project.id,
+          name: project.project_name ?? "Untitled project",
+          code: project.project_number ?? "",
+        }))
+
+        setProjects(mapped)
+      } catch (error) {
+        if (!isMounted) return
+
+        console.error("Failed to load projects", error)
+        const message =
+          error instanceof Error ? error.message : "Unable to load projects"
+        setProjectsError(message)
+        setProjects([])
+      } finally {
+        if (isMounted) {
+          setProjectsLoading(false)
+        }
+      }
+    }
+
+    loadProjects()
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
 
   const pendingUploads = React.useMemo(
     () => uploads.some((upload) => upload.status === "uploading"),
@@ -223,8 +242,8 @@ export function CreateReviewWizard() {
   )
 
   const currentProject = React.useMemo(
-    () => projectDirectory.find((project) => project.id === formState.projectId),
-    [formState.projectId]
+    () => projects.find((project) => project.id === formState.projectId),
+    [formState.projectId, projects]
   )
 
   const availableDocuments = React.useMemo(() => {
@@ -244,6 +263,7 @@ export function CreateReviewWizard() {
     setSelectedExistingDocs([])
     setUploads([])
     setRecentTemplateId("")
+    setSubmitError(null)
   }, [])
 
   const handleOpenChange = (nextOpen: boolean) => {
@@ -271,6 +291,7 @@ export function CreateReviewWizard() {
     }))
     setSelectedUsers({})
     setSelectedExistingDocs([])
+    setSubmitError(null)
   }
 
   const handleUserToggle = (
@@ -295,13 +316,9 @@ export function CreateReviewWizard() {
   }
 
   const handleRoleSelection = (role: string, shouldSelectAll: boolean) => {
-    if (!currentProject) return
-
-    const usersForRole = currentProject.roles[role] ?? []
-
     setSelectedUsers((prev) => ({
       ...prev,
-      [role]: shouldSelectAll ? [...usersForRole] : [],
+      [role]: shouldSelectAll ? [...(prev[role] ?? [])] : [],
     }))
   }
 
@@ -390,31 +407,87 @@ export function CreateReviewWizard() {
 
     if (!template) return
 
-    setFormState(template.formState)
+    const projectId = projects.some((project) => project.id === template.formState.projectId)
+      ? template.formState.projectId
+      : ""
+
+    setFormState({
+      ...template.formState,
+      projectId,
+    })
     setSelectedUsers(template.selectedUsers)
     setSelectedExistingDocs(template.existingDocumentIds)
   }
 
-  const handleComplete = () => {
-    console.log("Review created", {
-      details: formState,
-      assignments: selectedUsers,
-      documents: {
-        existing: selectedExistingDocs,
-        uploads,
-      },
-      template: recentTemplateId || "manual",
-    })
+  const handleComplete = async () => {
+    if (isSubmitting) return
 
-    if (pendingUploads) {
-      console.log(
-        "Uploads still in progress; they will continue in the background.",
-        uploads.filter((upload) => upload.status === "uploading")
-      )
+    const trimmedReviewName = formState.reviewName.trim()
+    const trimmedReviewNumber = formState.reviewNumber.trim()
+    const trimmedMilestone = formState.milestone.trim()
+
+    if (!trimmedReviewName) {
+      setSubmitError("Review name is required.")
+      setStep(1)
+      return
     }
 
-    setOpen(false)
-    resetWizard()
+    if (!formState.projectId) {
+      setSubmitError("Select a project for this review.")
+      setStep(1)
+      return
+    }
+
+    setIsSubmitting(true)
+    setSubmitError(null)
+
+    try {
+      const response = await fetch("/api/reviews", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          reviewName: trimmedReviewName,
+          reviewNumber: trimmedReviewNumber || null,
+          milestone: trimmedMilestone || null,
+          dueDateSmeReview: formState.dueSmeComments || null,
+          dueDateIssueComments: formState.dueIssueConsultant || null,
+          dueDateReplies: formState.dueConsultantReplies || null,
+          projectId: formState.projectId,
+        }),
+      })
+
+      const result = (await response.json().catch(() => ({}))) as {
+        review?: { id?: string }
+        error?: string
+      }
+
+      if (!response.ok) {
+        const message = result.error ?? "Unable to create review."
+        throw new Error(message)
+      }
+
+      if (pendingUploads) {
+        console.log(
+          "Uploads still in progress; they will continue in the background.",
+          uploads.filter((upload) => upload.status === "uploading")
+        )
+      }
+
+      setOpen(false)
+      resetWizard()
+
+      if (result.review?.id) {
+        router.push(`/reviews/${result.review.id}`)
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to create review."
+      setSubmitError(message)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -508,13 +581,21 @@ export function CreateReviewWizard() {
                   onChange={(event) => handleProjectChange(event.target.value)}
                   className="border-input focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] dark:bg-input/30 text-foreground bg-background h-9 w-full rounded-md border px-3 text-sm shadow-xs transition-colors outline-none"
                 >
-                  <option value="">Select a project</option>
-                  {projectDirectory.map((project) => (
+                  <option value="" disabled={projectsLoading}>
+                    {projectsLoading ? "Loading projects..." : "Select a project"}
+                  </option>
+                  {projects.map((project) => (
                     <option key={project.id} value={project.id}>
-                      {project.name} ({project.code})
+                      {project.name}
+                      {project.code ? ` (${project.code})` : ""}
                     </option>
                   ))}
                 </select>
+                {projectsError ? (
+                  <p className="text-destructive text-xs font-medium">
+                    {projectsError}
+                  </p>
+                ) : null}
               </div>
               <div className="grid gap-5 md:grid-cols-2">
                 <div className="space-y-2">
@@ -568,17 +649,15 @@ export function CreateReviewWizard() {
                   </p>
                 </div>
                 {currentProject ? (
-                  <div className="space-y-6">
-                    {Object.entries(currentProject.roles).map(([role, users]) => {
-                      const assignedUsers = selectedUsers[role] ?? []
-
-                      return (
+                  Object.keys(selectedUsers).length ? (
+                    <div className="space-y-6">
+                      {Object.entries(selectedUsers).map(([role, users]) => (
                         <div key={role} className="space-y-3">
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <div>
                               <p className="text-sm font-semibold">{role}</p>
                               <p className="text-muted-foreground text-xs">
-                                Assign by person or select the full discipline.
+                                Adjust contributors for this discipline.
                               </p>
                             </div>
                             <div className="flex items-center gap-2">
@@ -603,37 +682,46 @@ export function CreateReviewWizard() {
                             </div>
                           </div>
                           <div className="space-y-2 rounded-md border p-3">
-                            {users.map((user) => {
-                              const checkboxId = `${role}-${user}`
-                              const checked = assignedUsers.includes(user)
+                            {users.length ? (
+                              users.map((user) => {
+                                const checkboxId = `${role}-${user}`
 
-                              return (
-                                <div
-                                  key={user}
-                                  className="flex items-center justify-between gap-2 rounded-sm border border-transparent px-2 py-1.5 transition-colors hover:border-input"
-                                >
-                                  <Label
-                                    htmlFor={checkboxId}
-                                    className="flex-1 text-sm font-medium"
+                                return (
+                                  <div
+                                    key={user}
+                                    className="flex items-center justify-between gap-2 rounded-sm border border-transparent px-2 py-1.5 transition-colors hover:border-input"
                                   >
-                                    {user}
-                                  </Label>
-                                  <Checkbox
-                                    id={checkboxId}
-                                    checked={checked}
-                                    onCheckedChange={(value) =>
-                                      handleUserToggle(role, user, Boolean(value))
-                                    }
-                                    aria-label={`Assign ${user} to ${role}`}
-                                  />
-                                </div>
-                              )
-                            })}
+                                    <Label
+                                      htmlFor={checkboxId}
+                                      className="flex-1 text-sm font-medium"
+                                    >
+                                      {user}
+                                    </Label>
+                                    <Checkbox
+                                      id={checkboxId}
+                                      checked
+                                      onCheckedChange={(value) =>
+                                        handleUserToggle(role, user, Boolean(value))
+                                      }
+                                      aria-label={`Assign ${user} to ${role}`}
+                                    />
+                                  </div>
+                                )
+                              })
+                            ) : (
+                              <p className="text-muted-foreground text-xs">
+                                No users selected yet for this role.
+                              </p>
+                            )}
                           </div>
                         </div>
-                      )
-                    })}
-                  </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="rounded-md border border-dashed p-4 text-muted-foreground text-sm">
+                      Team assignments can be configured after creating the review.
+                    </div>
+                  )
                 ) : (
                   <div className="rounded-md border border-dashed p-4 text-muted-foreground text-sm">
                     Choose a project in Step 1 to load available team members.
@@ -769,8 +857,13 @@ export function CreateReviewWizard() {
               {step === 1 ? (
                 <Button onClick={handleNext}>Next</Button>
               ) : (
-                <Button onClick={handleComplete}>Complete</Button>
+                <Button onClick={handleComplete} disabled={isSubmitting}>
+                  {isSubmitting ? "Creating..." : "Complete"}
+                </Button>
               )}
+              {submitError ? (
+                <p className="text-destructive text-xs font-medium">{submitError}</p>
+              ) : null}
             </div>
           </div>
         </SheetFooter>

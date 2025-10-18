@@ -122,24 +122,24 @@ export function ReviewDetailsView({ review }: ReviewDetailsViewProps) {
               <p className="text-muted-foreground text-sm flex items-center gap-2">
                 <Calendar className="size-4" /> Client SME comments due
               </p>
-              <p className={cn("text-sm font-medium", deadlineClass(review.dueDateClientSmeComments))}>
-                {formatDate(review.dueDateClientSmeComments)}
+              <p className={cn("text-sm font-medium", deadlineClass(review.dueDateSmeReview))}>
+                {formatDate(review.dueDateSmeReview)}
               </p>
             </div>
             <div className="space-y-2">
               <p className="text-muted-foreground text-sm flex items-center gap-2">
                 <Calendar className="size-4" /> Consultant issue comments due
               </p>
-              <p className={cn("text-sm font-medium", deadlineClass(review.dueDateIssueCommentsConsultant))}>
-                {formatDate(review.dueDateIssueCommentsConsultant)}
+              <p className={cn("text-sm font-medium", deadlineClass(review.dueDateIssueComments))}>
+                {formatDate(review.dueDateIssueComments)}
               </p>
             </div>
             <div className="space-y-2 md:col-span-2">
               <p className="text-muted-foreground text-sm flex items-center gap-2">
                 <Calendar className="size-4" /> Client replies due
               </p>
-              <p className={cn("text-sm font-medium", deadlineClass(review.dueDateIssueRepliesClient))}>
-                {formatDate(review.dueDateIssueRepliesClient)}
+              <p className={cn("text-sm font-medium", deadlineClass(review.dueDateReplies))}>
+                {formatDate(review.dueDateReplies)}
               </p>
             </div>
             <div className="md:col-span-2">

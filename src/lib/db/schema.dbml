@@ -42,9 +42,9 @@ reviews [icon: check-square, color: green]{
   review_name string
   review_number string
   milestone string
-  due_date_client_sme_comments date
-  due_date_issue_comments_consultant date
-  due_date_issue_replies_client date
+  due_date_sme_review date
+  due_date_issue_comments date
+  due_date_replies date
   project_id uuid
 }
 

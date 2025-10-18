@@ -60,9 +60,9 @@ export type ReviewDetail = {
   reviewNumber: string
   milestone: string
   status: "Draft" | "In Review" | "Awaiting Client" | "Approved" | "Flagged"
-  dueDateClientSmeComments: string
-  dueDateIssueCommentsConsultant: string
-  dueDateIssueRepliesClient: string
+  dueDateSmeReview: string
+  dueDateIssueComments: string
+  dueDateReplies: string
   project: {
     id: string
     projectNumber: string
@@ -97,7 +97,7 @@ function mapReviewSummary(row: ReviewRow & { project: ProjectRow | null }): Revi
     reviewName: row.review_name ?? "Untitled review",
     reviewNumber: row.review_number ?? "",
     milestone: row.milestone ?? "",
-    dueDate: row.due_date_issue_comments_consultant ?? row.due_date_client_sme_comments ?? null,
+    dueDate: row.due_date_issue_comments ?? row.due_date_sme_review ?? null,
     project: row.project
       ? {
           id: row.project.id,
@@ -206,9 +206,9 @@ function mapReview(row: ReviewRow & {
     reviewNumber: row.review_number ?? "",
     milestone: row.milestone ?? "",
     status: (row.status ?? "Draft") as ReviewDetail["status"],
-    dueDateClientSmeComments: row.due_date_client_sme_comments ?? "",
-    dueDateIssueCommentsConsultant: row.due_date_issue_comments_consultant ?? "",
-    dueDateIssueRepliesClient: row.due_date_issue_replies_client ?? "",
+    dueDateSmeReview: row.due_date_sme_review ?? "",
+    dueDateIssueComments: row.due_date_issue_comments ?? "",
+    dueDateReplies: row.due_date_replies ?? "",
     project: mapProject(row.project),
     reviewers: mapReviewers(row.review_users ?? []),
     documents: mapDocuments(row.documents ?? []),
