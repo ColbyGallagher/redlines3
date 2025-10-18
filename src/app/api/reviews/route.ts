@@ -76,7 +76,7 @@ export async function POST(request: Request) {
     const dueDateIssueComments = normalizeOptionalDate(payload.dueDateIssueComments)
     const dueDateReplies = normalizeOptionalDate(payload.dueDateReplies)
 
-    const supabase = await createServerSupabaseClient<Database>()
+    const supabase = await createServerSupabaseClient()
 
     const {
       data: { user },
@@ -87,17 +87,20 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "You must be signed in to create a review." }, { status: 401 })
     }
 
-    const { data, error } = await supabase
-      .from("reviews")
-      .insert({
-        review_name: reviewName,
-        review_number: reviewNumber,
-        milestone,
-        due_date_sme_review: dueDateSmeReview,
-        due_date_issue_comments: dueDateIssueComments,
-        due_date_replies: dueDateReplies,
-        project_id: projectId,
-      })
+    const insertPayload: Database["redlines"]["Tables"]["reviews"]["Insert"] = {
+      review_name: reviewName,
+      review_number: reviewNumber,
+      milestone,
+      due_date_sme_review: dueDateSmeReview,
+      due_date_issue_comments: dueDateIssueComments,
+      due_date_replies: dueDateReplies,
+      project_id: projectId,
+    }
+
+    // TODO: replace with typed insert once Supabase schema typings are fully defined.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (supabase.from("reviews") as any)
+      .insert(insertPayload)
       .select("id")
       .single()
 
@@ -129,5 +132,3 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: message }, { status: 400 })
   }
 }
-
-

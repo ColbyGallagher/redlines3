@@ -126,10 +126,11 @@ export function PDFMarkupViewer({ reviewId, document }: PDFMarkupViewerProps) {
       })
 
       const pdfBytes = await pdfDoc.save()
-      const blob = new Blob([pdfBytes], { type: "application/pdf" })
+      const pdfBuffer = new Uint8Array(pdfBytes)
+      const blob = new Blob([pdfBuffer.buffer], { type: "application/pdf" })
       const downloadUrl = URL.createObjectURL(blob)
 
-      const link = document.createElement("a")
+      const link = globalThis.document.createElement("a")
       link.href = downloadUrl
       link.download = `${document.name.replace(/\s+/g, "-").toLowerCase()}-marked.pdf`
       link.click()

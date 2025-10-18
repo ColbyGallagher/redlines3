@@ -466,7 +466,7 @@ function mapProjectSummary(project: ProjectWithRelations): ProjectSummary {
 
 export async function getProjectSummaries(): Promise<ProjectSummary[]> {
   try {
-    const supabase = await createServerSupabaseClient<Database>()
+    const supabase = await createServerSupabaseClient()
     const { data, error } = await supabase
       .from("projects")
       .select("*, reviews(*, documents(*), issues(*))")
@@ -476,7 +476,7 @@ export async function getProjectSummaries(): Promise<ProjectSummary[]> {
       throw new Error(error.message)
     }
 
-    const records = (data as ProjectWithRelations[] | null) ?? []
+    const records = Array.isArray(data) ? (data as unknown as ProjectWithRelations[]) : []
     return records.map(mapProjectSummary)
   } catch (error) {
     throw new Error(
@@ -487,7 +487,7 @@ export async function getProjectSummaries(): Promise<ProjectSummary[]> {
 
 export async function getProjectSummaryById(projectId: string): Promise<ProjectSummary | undefined> {
   try {
-    const supabase = await createServerSupabaseClient<Database>()
+    const supabase = await createServerSupabaseClient()
     const { data, error } = await supabase
       .from("projects")
       .select("*, reviews(*, documents(*), issues(*))")
@@ -502,7 +502,7 @@ export async function getProjectSummaryById(projectId: string): Promise<ProjectS
       return undefined
     }
 
-    return mapProjectSummary(data as ProjectWithRelations)
+    return mapProjectSummary(data as unknown as ProjectWithRelations)
   } catch (error) {
     throw new Error(
       `Failed to fetch project ${projectId}: ${error instanceof Error ? error.message : "Unknown error"}`,

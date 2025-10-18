@@ -1,20 +1,19 @@
 import "server-only"
 
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 
 import { getProjectSummaryById } from "@/lib/data/projects"
 
 export const runtime = "nodejs"
 
-type RouteParams = {
-  params: {
-    id: string
-  }
+type RouteContext = {
+  params: Promise<{ id: string }>
 }
 
-export async function GET(_: Request, { params }: RouteParams) {
+export async function GET(_request: NextRequest, context: RouteContext) {
   try {
-    const summary = await getProjectSummaryById(params.id)
+    const { id } = await context.params
+    const summary = await getProjectSummaryById(id)
 
     if (!summary) {
       return NextResponse.json({ error: "Project not found" }, { status: 404 })

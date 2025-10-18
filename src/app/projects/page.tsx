@@ -29,15 +29,17 @@ import {
 } from "@/components/ui/table"
 import { getProjectSummaries } from "@/lib/data/projects"
 
+export const dynamic = "force-dynamic"
+
 function formatDate(value: string) {
   if (!value || value === new Date(0).toISOString()) {
-    return "—"
+    return "â€”"
   }
 
   const date = new Date(value)
 
   if (Number.isNaN(date.getTime())) {
-    return "—"
+    return "â€”"
   }
 
   return new Intl.DateTimeFormat("en", {
@@ -146,5 +148,6 @@ export default async function ProjectsPage() {
     </div>
   )
 }
+
 
 

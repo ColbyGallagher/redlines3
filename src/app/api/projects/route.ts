@@ -83,7 +83,7 @@ export async function POST(request: Request) {
     const status = normalizeStatus(payload.status)
     const contractType = normalizeContractType(payload.contractType)
 
-    const supabase = await createServerSupabaseClient<Database>()
+    const supabase = await createServerSupabaseClient()
 
     const {
       data: { user },
@@ -94,18 +94,21 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "You must be signed in to create a project." }, { status: 401 })
     }
 
-    const { data, error } = await supabase
-      .from("projects")
-      .insert({
-        project_name: projectName,
-        project_number: projectNumber,
-        project_location: projectLocation,
-        parent_project: parentProject,
-        status,
-        contract_type: contractType,
-      })
+    const insertPayload: Database["redlines"]["Tables"]["projects"]["Insert"] = {
+      project_name: projectName,
+      project_number: projectNumber,
+      project_location: projectLocation,
+      parent_project: parentProject,
+      status,
+      contract_type: contractType,
+    }
+
+    // TODO: replace with typed insert once Supabase schema typings are fully defined.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (supabase.from("projects") as any)
+      .insert(insertPayload)
       .select()
-      .single<ProjectRow>()
+      .single()
 
     if (error) {
       console.error("Supabase insert error", {
@@ -122,10 +125,15 @@ export async function POST(request: Request) {
       throw new Error(error.message)
     }
 
+    const project = (data ?? null) as ProjectRow | null
+    if (!project) {
+      throw new Error("Project was not returned from Supabase")
+    }
+
     revalidateTag("projects")
     revalidatePath("/projects")
 
-    return NextResponse.json({ project: data })
+    return NextResponse.json({ project })
   } catch (error) {
     console.error("Project creation failed", error)
     const message = error instanceof Error ? error.message : "Failed to create project"

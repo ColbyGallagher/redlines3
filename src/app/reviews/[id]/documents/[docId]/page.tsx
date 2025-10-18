@@ -27,10 +27,11 @@ export default async function ReviewDocumentPage({ params }: ReviewDocumentPageP
     <div className="flex h-full flex-col gap-6 p-6">
       <header className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <p className="text-sm text-muted-foreground">{review.review_name}</p>
-          <h1 className="text-2xl font-semibold tracking-tight">{document.document_name}</h1>
+          <p className="text-sm text-muted-foreground">{review.reviewName}</p>
+          <h1 className="text-2xl font-semibold tracking-tight">{document.documentName}</h1>
           <p className="text-xs text-muted-foreground">
-            {document.document_code} • {document.file_size ?? ""}
+            {document.documentCode}
+            {document.fileSize ? " • " + document.fileSize : ""}
           </p>
         </div>
       </header>
@@ -40,14 +41,12 @@ export default async function ReviewDocumentPage({ params }: ReviewDocumentPageP
           reviewId={review.id}
           document={{
             id: document.id,
-            name: document.document_name ?? "Untitled document",
-            code: document.document_code ?? "",
-            pdfUrl: document.pdf_url ?? "",
+            name: document.documentName ?? "Untitled document",
+            code: document.documentCode ?? "",
+            pdfUrl: document.pdfUrl ?? "",
           }}
         />
       </section>
     </div>
   )
 }
-
-

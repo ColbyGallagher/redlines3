@@ -1,3 +1,12 @@
+type GenericRelationship = {
+  foreignKeyName: string
+  columns: string[]
+  isOneToOne?: boolean
+  referencedRelation: string
+  referencedColumns: string[]
+}
+
+
 export type Project = {
   id: string
   project_number: string
@@ -20,6 +29,7 @@ export type Review = {
   due_date_replies: string | null
   project_id: string
   status?: string | null
+  summary?: string | null
   created_at?: string | null
   updated_at?: string | null
 }
@@ -80,28 +90,31 @@ export type ReviewUser = {
   role: string | null
 }
 
+type TableDefinition<T> = {
+  Row: T
+  Insert: {
+    [K in keyof T]?: T[K] | null
+  }
+  Update: {
+    [K in keyof T]?: T[K] | null
+  }
+  Relationships: GenericRelationship[]
+}
+
 export type Database = {
   redlines: {
     Tables: {
-      projects: {
-        Row: Project
-      }
-      reviews: {
-        Row: Review
-      }
-      documents: {
-        Row: Document
-      }
-      issues: {
-        Row: Issue
-      }
-      users: {
-        Row: User
-      }
-      review_users: {
-        Row: ReviewUser
-      }
+      projects: TableDefinition<Project>
+      reviews: TableDefinition<Review>
+      documents: TableDefinition<Document>
+      issues: TableDefinition<Issue>
+      users: TableDefinition<User>
+      review_users: TableDefinition<ReviewUser>
     }
+    Views: Record<string, never>
+    Functions: Record<string, never>
+    Enums: Record<string, never>
+    CompositeTypes: never
   }
 }
 

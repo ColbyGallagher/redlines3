@@ -98,7 +98,7 @@ export const columns: ColumnDef<ReviewSummary>[] = [
     ),
     cell: ({ row, table }) => {
       const project = row.original.project
-      const navigateProject = table.options.meta?.navigateProject as ((id: string) => void) | undefined
+      const navigateProject = table.options.meta?.navigateProject
 
       if (!project) {
         return <span className="text-muted-foreground">—</span>
@@ -109,7 +109,7 @@ export const columns: ColumnDef<ReviewSummary>[] = [
           type="button"
           onClick={(event) => {
             event.stopPropagation()
-            navigateProject?.(project.id)
+            navigateProject?.(project.id, row.original)
           }}
           className="inline-flex items-center gap-1 text-left font-medium text-foreground transition hover:underline"
         >
@@ -179,7 +179,7 @@ export const columns: ColumnDef<ReviewSummary>[] = [
     enableHiding: false,
     cell: ({ row, table }) => {
       const review = row.original
-      const navigate = table.options.meta?.navigate as ((id: string) => void) | undefined
+      const navigateReview = table.options.meta?.navigateReview
 
       return (
         <DropdownMenu>
@@ -191,7 +191,7 @@ export const columns: ColumnDef<ReviewSummary>[] = [
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-48">
             <DropdownMenuLabel>Actions</DropdownMenuLabel>
-            <DropdownMenuItem onClick={() => navigate?.(review.id)}>
+            <DropdownMenuItem onClick={() => navigateReview?.(review.id, review)}>
               View details
             </DropdownMenuItem>
             <DropdownMenuItem>Share with team</DropdownMenuItem>

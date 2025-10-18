@@ -32,6 +32,8 @@ import { getProjectSummaries } from "@/lib/data/projects"
 import { getReviewSummaries } from "@/lib/data/reviews"
 import { Search } from "lucide-react"
 
+export const dynamic = "force-dynamic"
+
 export default async function Page() {
   const [projectSummaries, reviewSummaries] = await Promise.all([
     getProjectSummaries(),
@@ -120,24 +122,23 @@ export default async function Page() {
             <Card>
               <CardHeader>
                 <CardTitle>Open Reviews</CardTitle>
-                <CardDescription>Items awaiting engineer feedback</CardDescription>
+                <CardDescription>Reviews awaiting attention across your portfolio.</CardDescription>
               </CardHeader>
               <CardContent>
-                <p className="text-3xl font-semibold">12</p>
-                <p className="text-muted-foreground text-xs">+3 since last check-in</p>
+                <p className="text-3xl font-semibold">{reviewSummaries.length}</p>
+                <p className="text-muted-foreground text-xs">
+                  Tracking reviews that have activity within the selected timeframe.
+                </p>
               </CardContent>
             </Card>
             <Card>
               <CardHeader>
-                <CardTitle>Pending Approvals</CardTitle>
-                <CardDescription>Ready for client sign-off</CardDescription>
+                <CardTitle>Active Projects</CardTitle>
+                <CardDescription>Total projects with ongoing review work.</CardDescription>
               </CardHeader>
               <CardContent>
-                <p className="text-3xl font-semibold">5</p>
-                <div className="mt-2 space-y-1 text-muted-foreground text-xs">
-                  <p>2 with requested clarifications</p>
-                  <p>3 on hold for scheduling</p>
-                </div>
+                <p className="text-3xl font-semibold">{projectSummaries.length}</p>
+                <p className="text-muted-foreground text-xs">Includes projects with recent document coordination.</p>
               </CardContent>
             </Card>
             <Card>

@@ -220,7 +220,7 @@ function mapReview(row: ReviewRow & {
 
 export async function getReviewSummaries(): Promise<ReviewSummary[]> {
   try {
-    const supabase = await createServerSupabaseClient<Database>()
+    const supabase = await createServerSupabaseClient()
 
     const { data, error } = await supabase
       .from("reviews")
@@ -231,7 +231,7 @@ export async function getReviewSummaries(): Promise<ReviewSummary[]> {
       throw new Error(error.message)
     }
 
-    const rows = (data as (ReviewRow & { project: ProjectRow | null })[] | null) ?? []
+    const rows = Array.isArray(data) ? (data as unknown as (ReviewRow & { project: ProjectRow | null })[]) : []
     return rows.map(mapReviewSummary)
   } catch (error) {
     throw new Error(
@@ -242,7 +242,7 @@ export async function getReviewSummaries(): Promise<ReviewSummary[]> {
 
 export async function getReviewDetailById(reviewId: string): Promise<ReviewDetail | undefined> {
   try {
-    const supabase = await createServerSupabaseClient<Database>()
+    const supabase = await createServerSupabaseClient()
 
     const { data, error } = await supabase
       .from("reviews")
@@ -256,16 +256,18 @@ export async function getReviewDetailById(reviewId: string): Promise<ReviewDetai
       throw new Error(error.message)
     }
 
-    if (!data) {
+    if (!data || typeof data !== "object") {
       return undefined
     }
 
-    return mapReview(data as ReviewRow & {
+    const record = data as unknown as ReviewRow & {
       project: ProjectRow | null
       documents: DocumentRow[] | null
       issues: IssueRow[] | null
       review_users: ReviewUserRow[] | null
-    })
+    }
+
+    return mapReview(record)
   } catch (error) {
     throw new Error(
       `Failed to fetch review ${reviewId}: ${error instanceof Error ? error.message : "Unknown error"}`,
@@ -275,7 +277,7 @@ export async function getReviewDetailById(reviewId: string): Promise<ReviewDetai
 
 export async function getDocumentForReview(reviewId: string, documentId: string): Promise<ReviewDocument | undefined> {
   try {
-    const supabase = await createServerSupabaseClient<Database>()
+    const supabase = await createServerSupabaseClient()
 
     const { data, error } = await supabase
       .from("documents")
@@ -288,11 +290,12 @@ export async function getDocumentForReview(reviewId: string, documentId: string)
       throw new Error(error.message)
     }
 
-    if (!data) {
+    if (!data || typeof data !== "object") {
       return undefined
     }
 
-    const [document] = mapDocuments([data])
+    const record = data as unknown as DocumentRow
+    const [document] = mapDocuments([record])
     return document
   } catch (error) {
     throw new Error(

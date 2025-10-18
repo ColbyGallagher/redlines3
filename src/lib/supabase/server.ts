@@ -2,12 +2,11 @@ import "server-only"
 
 import { createServerClient, type CookieOptions } from "@supabase/ssr"
 import { cookies as nextCookies } from "next/headers"
-import type { SupabaseClient } from "@supabase/supabase-js"
+
+import type { Database } from "@/lib/db/types"
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-
-export type SupabaseServerClient<TDatabase = Record<string, never>> = SupabaseClient<TDatabase, "public", Record<string, unknown>>
 
 type CookieAdapter = {
   get: (name: string) => { name: string; value: string } | undefined
@@ -30,18 +29,19 @@ async function createDefaultCookieAdapter(): Promise<CookieAdapter> {
     set(name, value, options) {
       store.set(name, value, options)
     },
-    remove(name, _options) {
+    remove(name, options) {
+      void options
       store.delete(name)
     },
   }
 }
 
-export async function createServerSupabaseClient<TDatabase = Record<string, never>>(
+export async function createServerSupabaseClient(
   adapter?: CookieAdapter,
-): Promise<SupabaseServerClient<TDatabase>> {
+) {
   const cookies = adapter ?? (await createDefaultCookieAdapter())
 
-  return createServerClient<TDatabase>(supabaseUrl, supabaseAnonKey, {
+  return createServerClient<Database, "redlines">(supabaseUrl, supabaseAnonKey, {
     cookies: {
       get(name: string) {
         return cookies.get(name)?.value
@@ -60,8 +60,8 @@ export async function createServerSupabaseClient<TDatabase = Record<string, neve
 }
 
 // Convenience wrapper for server components/routes where cookies() is available
-export function createServerSupabaseClientFromHeaders<TDatabase = Record<string, never>>() {
-  return createServerSupabaseClient<TDatabase>()
+export function createServerSupabaseClientFromHeaders() {
+  return createServerSupabaseClient()
 }
 
 

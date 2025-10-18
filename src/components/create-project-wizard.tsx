@@ -70,7 +70,7 @@ const placeholderTeams: Record<string, string[]> = {
 }
 
 type CreateProjectResponse = {
-  project: {
+  project?: {
     id: string
     project_name: string
     project_number: string
@@ -79,6 +79,7 @@ type CreateProjectResponse = {
     parent_project: string | null
     contract_type: string | null
   }
+  error?: string
 }
 
 export function CreateProjectWizard() {
