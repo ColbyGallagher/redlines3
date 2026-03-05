@@ -21,7 +21,6 @@ import {
   SidebarContent,
   SidebarFooter,
   SidebarHeader,
-  SidebarRail,
   SidebarGroup,
   SidebarGroupLabel,
   SidebarMenu,
@@ -30,6 +29,9 @@ import {
   SidebarMenuSub,
   SidebarMenuSubButton,
   SidebarMenuSubItem,
+  SidebarRail,
+  SidebarTrigger,
+  useSidebar,
 } from "@/components/ui/sidebar"
 import {
   Collapsible,
@@ -55,6 +57,11 @@ type SidebarReview = {
 type SidebarApiResponse = {
   projects: SidebarProject[]
   reviews: SidebarReview[]
+  user?: {
+    first_name: string
+    last_name: string
+    email: string
+  } | null
 }
 
 const data = {
@@ -84,8 +91,10 @@ const data = {
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname()
+  const { state } = useSidebar()
   const [projects, setProjects] = useState<SidebarProject[]>([])
   const [recentReviews, setRecentReviews] = useState<SidebarReview[]>([])
+  const [user, setUser] = useState(data.user)
   const [sidebarError, setSidebarError] = useState<string | null>(null)
   const [isLoadingSidebar, setIsLoadingSidebar] = useState(true)
 
@@ -118,6 +127,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         const payload = (await response.json()) as SidebarApiResponse
         setProjects(payload.projects)
         setRecentReviews(payload.reviews)
+        if (payload.user) {
+          setUser({
+            name: [payload.user.first_name, payload.user.last_name].filter(Boolean).join(" ") || "User",
+            email: payload.user.email,
+            avatar: "",
+          })
+        }
         setSidebarError(null)
       } catch (error) {
         console.error("Failed to load sidebar data", error)
@@ -144,7 +160,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
-        <TeamSwitcher teams={data.teams} />
+        <div className="flex items-center gap-2 px-1 group-data-[state=collapsed]:justify-center">
+          <div className="group-data-[state=collapsed]:hidden flex-1">
+            <TeamSwitcher teams={data.teams} />
+          </div>
+          <SidebarTrigger className="hidden md:flex" />
+        </div>
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
@@ -282,7 +303,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         </SidebarGroup>
       </SidebarContent>
       <SidebarFooter>
-        <NavUser user={data.user} />
+        <NavUser user={user} />
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>

@@ -9,7 +9,9 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
+import Link from "next/link"
 import type { ProjectSummary } from "@/lib/data/projects"
+import { CreateReviewDialog } from "@/components/projects/create-review-dialog"
 
 type ProjectReviewsListProps = {
   summary: ProjectSummary
@@ -59,6 +61,8 @@ export function ProjectReviewsList({ summary }: ProjectReviewsListProps) {
     a.reviewName.localeCompare(b.reviewName),
   )
 
+  const milestones = summary.settings.availableMilestones.map((m) => m.name)
+
   return (
     <Card className="lg:col-span-5 xl:col-span-4">
       <CardHeader className="flex flex-row items-center justify-between">
@@ -66,10 +70,13 @@ export function ProjectReviewsList({ summary }: ProjectReviewsListProps) {
           <CardTitle>Project Reviews</CardTitle>
           <CardDescription>Track key milestones and upcoming checkpoints</CardDescription>
         </div>
-        <Button variant="ghost" size="sm">
-          View all
-          <ArrowUpRight className="ml-1 size-4" />
-        </Button>
+        <div className="flex items-center gap-2">
+          <CreateReviewDialog projectId={summary.project.id} milestones={milestones} />
+          <Button variant="ghost" size="sm">
+            View all
+            <ArrowUpRight className="ml-1 size-4" />
+          </Button>
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
         {reviews.length === 0 ? (
@@ -77,16 +84,24 @@ export function ProjectReviewsList({ summary }: ProjectReviewsListProps) {
         ) : (
           reviews.map((review, index) => (
             <div key={review.id} className="space-y-2">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="font-medium leading-tight">{review.reviewName}</p>
-                  <p className="text-muted-foreground text-xs">{review.milestone}</p>
+              <Link
+                href={`/reviews/${review.id}`}
+                className="group block space-y-2 rounded-lg p-3 transition hover:bg-muted/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/80"
+                aria-label={`Open details for ${review.reviewName}`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-medium leading-tight group-hover:text-primary">
+                      {review.reviewName}
+                    </p>
+                    <p className="text-muted-foreground text-xs">{review.milestone}</p>
+                  </div>
+                  <span className="rounded-full bg-muted px-2 py-1 text-xs font-medium">
+                    {formatReviewStatus(review)}
+                  </span>
                 </div>
-                <span className="rounded-full bg-muted px-2 py-1 text-xs font-medium">
-                  {formatReviewStatus(review)}
-                </span>
-              </div>
-              <p className="text-muted-foreground text-xs">{formatDueLabel(review)}</p>
+                <p className="text-muted-foreground text-xs">{formatDueLabel(review)}</p>
+              </Link>
               {index < reviews.length - 1 ? <Separator /> : null}
             </div>
           ))

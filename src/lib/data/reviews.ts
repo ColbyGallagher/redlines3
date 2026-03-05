@@ -2,13 +2,14 @@ import "server-only"
 
 import { createServerSupabaseClient } from "@/lib/supabase/server"
 import type { Database } from "@/lib/db/types"
+import { formatName, toTitleCaseFallback } from "@/lib/utils/user-utils"
 
-type ReviewRow = Database["redlines"]["Tables"]["reviews"]["Row"]
-type ProjectRow = Database["redlines"]["Tables"]["projects"]["Row"]
-type DocumentRow = Database["redlines"]["Tables"]["documents"]["Row"]
-type IssueRow = Database["redlines"]["Tables"]["issues"]["Row"]
-type ReviewUserRow = Database["redlines"]["Tables"]["review_users"]["Row"] & {
-  user: Database["redlines"]["Tables"]["users"]["Row"] | null
+type ReviewRow = Database["public"]["Tables"]["reviews"]["Row"]
+type ProjectRow = Database["public"]["Tables"]["projects"]["Row"]
+type DocumentRow = Database["public"]["Tables"]["documents"]["Row"]
+type IssueRow = Database["public"]["Tables"]["issues"]["Row"]
+type ReviewUserRow = Database["public"]["Tables"]["review_users"]["Row"] & {
+  user: Database["public"]["Tables"]["users"]["Row"] | null
 }
 
 export type ReviewUser = {
@@ -19,6 +20,8 @@ export type ReviewUser = {
   jobTitle: string
   role: string
   avatarFallback: string
+  company?: string
+  status?: string
 }
 
 export type ReviewDocument = {
@@ -100,10 +103,10 @@ function mapReviewSummary(row: ReviewRow & { project: ProjectRow | null }): Revi
     dueDate: row.due_date_issue_comments ?? row.due_date_sme_review ?? null,
     project: row.project
       ? {
-          id: row.project.id,
-          name: row.project.project_name ?? "Untitled project",
-          number: row.project.project_number ?? undefined,
-        }
+        id: row.project.id,
+        name: row.project.project_name ?? "Untitled project",
+        number: row.project.project_number ?? undefined,
+      }
       : null,
     coordinator: "Unassigned",
     status: (row.status ?? "Draft") as ReviewDetail["status"],
@@ -119,19 +122,6 @@ function mapProject(project: ProjectRow | null): ReviewDetail["project"] {
   }
 }
 
-function formatName(name: string | null | undefined) {
-  return name ?? ""
-}
-
-function toTitleCaseFallback(firstName: string, lastName: string) {
-  const first = firstName.trim()
-  const last = lastName.trim()
-  if (!first && !last) return "MT"
-  const firstInitial = first ? first[0] : ""
-  const lastInitial = last ? last[0] : ""
-  const fallback = `${firstInitial}${lastInitial || (firstInitial ? firstInitial : "?" )}`
-  return fallback.toUpperCase()
-}
 
 function mapReviewers(reviewUsers: ReviewUserRow[] | null | undefined): ReviewUser[] {
   if (!reviewUsers?.length) return []
@@ -149,6 +139,8 @@ function mapReviewers(reviewUsers: ReviewUserRow[] | null | undefined): ReviewUs
       jobTitle: formatName(user?.job_title),
       role: entry.role ?? "Reviewer",
       avatarFallback: toTitleCaseFallback(firstName, lastName),
+      company: "ColbyGallagher",
+      status: "Active",
     }
   })
 }
@@ -296,13 +288,70 @@ export async function getDocumentForReview(reviewId: string, documentId: string)
 
     const record = data as unknown as DocumentRow
     const [document] = mapDocuments([record])
+
+    // Generate signed URL for PDF if it exists
+    if (record.pdf_url) {
+      try {
+        const urlParts = record.pdf_url.split("/storage/v1/object/public/")
+        if (urlParts.length > 1) {
+          const pathParts = urlParts[1].split("/")
+          const bucket = pathParts[0]
+          const path = pathParts.slice(1).join("/")
+
+          const { data: signedData, error: signedError } = await supabase.storage
+            .from(bucket)
+            .createSignedUrl(path, 3600)
+
+          if (!signedError && signedData) {
+            document.pdfUrl = signedData.signedUrl
+          }
+        }
+      } catch (e) {
+        console.error("Failed to generate signed URL", e)
+      }
+    }
+
     return document
   } catch (error) {
     throw new Error(
-      `Failed to fetch document ${documentId} for review ${reviewId}: ${
-        error instanceof Error ? error.message : "Unknown error"
+      `Failed to fetch document ${documentId} for review ${reviewId}: ${error instanceof Error ? error.message : "Unknown error"
       }`,
     )
   }
 }
 
+export async function getAnnotationsForDocument(documentId: string) {
+  try {
+    const supabase = await createServerSupabaseClient()
+
+    const { data, error } = await supabase
+      .from("annotations")
+      .select("*")
+      .eq("document_id", documentId)
+      .order("created_at", { ascending: true })
+
+    if (error) {
+      throw new Error(error.message)
+    }
+
+    return (data || []).map((record: any) => ({
+      id: record.id,
+      reviewId: record.review_id,
+      documentId: record.document_id,
+      page: record.page,
+      x: record.x,
+      y: record.y,
+      content: record.content,
+      color: record.color,
+      classification: record.classification,
+      priority: record.priority,
+      type: record.type,
+      issueId: record.issue_id,
+      createdBy: record.created_by,
+      createdAt: record.created_at,
+    }))
+  } catch (error) {
+    console.error("Failed to fetch annotations on server", error)
+    return []
+  }
+} 

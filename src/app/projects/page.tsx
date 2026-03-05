@@ -42,7 +42,7 @@ function formatDate(value: string) {
     return "â€”"
   }
 
-  return new Intl.DateTimeFormat("en", {
+  return new Intl.DateTimeFormat("en-GB", {
     month: "short",
     day: "numeric",
     year: "numeric",

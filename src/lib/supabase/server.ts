@@ -41,7 +41,7 @@ export async function createServerSupabaseClient(
 ) {
   const cookies = adapter ?? (await createDefaultCookieAdapter())
 
-  return createServerClient<Database, "redlines">(supabaseUrl, supabaseAnonKey, {
+  return createServerClient<Database, "public">(supabaseUrl, supabaseAnonKey, {
     cookies: {
       get(name: string) {
         return cookies.get(name)?.value
@@ -54,7 +54,7 @@ export async function createServerSupabaseClient(
       },
     },
     db: {
-      schema: "redlines",
+      schema: "public",
     },
   })
 }

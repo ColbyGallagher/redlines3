@@ -346,9 +346,9 @@ export function CreateReviewWizard() {
         prev.map((upload) =>
           upload.id === uploadId
             ? {
-                ...upload,
-                status: "uploaded",
-              }
+              ...upload,
+              status: "uploaded",
+            }
             : upload
         )
       )
@@ -455,6 +455,7 @@ export function CreateReviewWizard() {
           dueDateIssueComments: formState.dueIssueConsultant || null,
           dueDateReplies: formState.dueConsultantReplies || null,
           projectId: formState.projectId,
+          documents: uploads.map((u) => ({ name: u.name, size: u.size })),
         }),
       })
 

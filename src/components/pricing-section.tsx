@@ -118,7 +118,7 @@ export default function PricingSection() {
   }, [selectedQuantity]);
 
   return (
-    <section className="w-full max-w-6xl px-6 py-16 md:py-24">
+    <section className="w-full max-w-6xl px-6 py-16 md:py-24 mx-auto">
       <div className="flex flex-col items-center gap-6 text-center">
         <span className="text-sm font-semibold tracking-wide text-primary">
           Pricing

@@ -28,10 +28,12 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import type { ProjectIssueSummary } from "@/lib/data/projects"
+import type { ProjectIssueSummary, ProjectSummary } from "@/lib/data/projects"
+import { CreateIssueDialog } from "@/components/projects/create-issue-dialog"
 
 type IssuesTableProps = {
   issues: ProjectIssueSummary[]
+  summary: ProjectSummary
 }
 
 const STATUS_ORDER: ProjectIssueSummary["status"][] = ["Open", "In Progress", "Resolved", "Closed"]
@@ -67,7 +69,7 @@ const updatedDateFormatter = new Intl.DateTimeFormat("en-US", {
   timeZone: "UTC",
 })
 
-export function IssuesTable({ issues }: IssuesTableProps) {
+export function IssuesTable({ issues, summary }: IssuesTableProps) {
   const [searchTerm, setSearchTerm] = React.useState("")
   const [statusFilter, setStatusFilter] = React.useState<ProjectIssueSummary["status"] | "All">("All")
 
@@ -99,6 +101,12 @@ export function IssuesTable({ issues }: IssuesTableProps) {
           <CardDescription>Monitor open items and track response health</CardDescription>
         </div>
         <div className="flex items-center gap-2">
+          <CreateIssueDialog
+            projectId={summary.project.id}
+            reviews={summary.reviews}
+            disciplines={summary.settings.disciplines}
+            importances={summary.settings.importances}
+          />
           <div className="relative">
             <Search className="text-muted-foreground absolute left-3 top-1/2 size-4 -translate-y-1/2" />
             <Input
@@ -172,9 +180,8 @@ export function IssuesTable({ issues }: IssuesTableProps) {
                       </span>
                     </TableCell>
                     <TableCell className="align-top">
-                      <span className={`rounded-full px-2 py-1 text-xs font-medium uppercase tracking-wide ${
-                        importanceTone[issue.importance] ?? "bg-muted text-muted-foreground"
-                      }`}>
+                      <span className={`rounded-full px-2 py-1 text-xs font-medium uppercase tracking-wide ${importanceTone[issue.importance] ?? "bg-muted text-muted-foreground"
+                        }`}>
                         {issue.importance}
                       </span>
                     </TableCell>

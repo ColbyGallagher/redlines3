@@ -14,6 +14,7 @@ type CreateReviewRequestBody = {
   dueDateIssueComments?: unknown
   dueDateReplies?: unknown
   projectId?: unknown
+  documents?: { name: string; size: number }[]
 }
 
 function normalizeRequiredString(value: unknown, fieldName: string) {
@@ -87,7 +88,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "You must be signed in to create a review." }, { status: 401 })
     }
 
-    const insertPayload: Database["redlines"]["Tables"]["reviews"]["Insert"] = {
+    const insertPayload: Database["public"]["Tables"]["reviews"]["Insert"] = {
       review_name: reviewName,
       review_number: reviewNumber,
       milestone,
@@ -118,6 +119,27 @@ export async function POST(request: Request) {
         },
       })
       throw new Error(error.message)
+    }
+
+    if (payload.documents && Array.isArray(payload.documents) && payload.documents.length > 0) {
+      const documentsPayload = payload.documents.map((doc) => ({
+        document_name: doc.name,
+        file_size: doc.size.toString(), // Storing size as string based on usage in other files
+        project_id: projectId,
+        review_id: data.id,
+        status: "uploaded", // Default status
+        uploaded_at: new Date().toISOString(),
+      }))
+
+      // TODO: replace with typed insert once Supabase schema typings are fully defined.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error: docError } = await (supabase.from("documents") as any).insert(documentsPayload)
+
+      if (docError) {
+        console.error("Supabase insert error (documents)", docError)
+        // We log but don't fail the request if documents fail, or we could throw. 
+        // For now, let's log.
+      }
     }
 
     revalidateTag("reviews")

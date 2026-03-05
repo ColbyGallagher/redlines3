@@ -1,7 +1,9 @@
 import "server-only"
 
 import { createServerSupabaseClient } from "@/lib/supabase/server"
-import type { Database } from "@/lib/db/types"
+import type { Database, ProjectMilestone, ProjectStatus, ProjectImportance, ProjectDiscipline, ProjectState, ProjectSuitability, ProjectReviewStage, ProjectResponseRole } from "@/lib/db/types"
+import type { ReviewUser } from "./reviews"
+import { formatName, toTitleCaseFallback } from "@/lib/utils/user-utils"
 
 const MS_PER_DAY = 1000 * 60 * 60 * 24
 const UPCOMING_REVIEW_WINDOW_DAYS = 7
@@ -11,18 +13,31 @@ const ACTIVE_REVIEW_STATUSES = new Set(["Draft", "In Review", "Awaiting Client",
 const ACTIVE_ISSUE_STATUSES = new Set(["Open", "In Progress"])
 const CLOSED_ISSUE_STATUS = "Closed"
 
-type ProjectRow = Database["redlines"]["Tables"]["projects"]["Row"]
-type ReviewRow = Database["redlines"]["Tables"]["reviews"]["Row"]
-type DocumentRow = Database["redlines"]["Tables"]["documents"]["Row"]
-type IssueRow = Database["redlines"]["Tables"]["issues"]["Row"]
+type ProjectRow = Database["public"]["Tables"]["projects"]["Row"]
+type ReviewRow = Database["public"]["Tables"]["reviews"]["Row"]
+type DocumentRow = Database["public"]["Tables"]["documents"]["Row"]
+type IssueRow = Database["public"]["Tables"]["issues"]["Row"]
 
 type ReviewWithRelations = ReviewRow & {
   documents: DocumentRow[] | null
   issues: IssueRow[] | null
 }
 
+type ProjectUserRow = Database["public"]["Tables"]["project_users"]["Row"] & {
+  user: Database["public"]["Tables"]["users"]["Row"] | null
+}
+
 type ProjectWithRelations = ProjectRow & {
   reviews: ReviewWithRelations[] | null
+  project_milestones: ProjectMilestone[] | null
+  project_statuses: ProjectStatus[] | null
+  project_importances: ProjectImportance[] | null
+  project_disciplines: ProjectDiscipline[] | null
+  project_states: ProjectState[] | null
+  project_suitabilities: ProjectSuitability[] | null
+  project_review_stages: ProjectReviewStage[] | null
+  project_response_roles: ProjectResponseRole[] | null
+  project_users: ProjectUserRow[] | null
 }
 
 type NormalizedReview = {
@@ -121,8 +136,13 @@ export type ProjectMetrics = {
   closedIssues: number
 }
 
+export type Milestone = {
+  name: string
+  description?: string
+}
+
 export type ProjectSettings = {
-  availableMilestones: string[]
+  availableMilestones: Milestone[]
   selectedMilestones: string[]
   titleblockTemplateUrl?: string
   documentNamingConvention: string
@@ -136,6 +156,10 @@ export type ProjectSettings = {
   defaultResponsePeriods: { role: string; days: number }[]
 }
 
+type ProjectRowWithSettings = ProjectRow & {
+  settings: ProjectSettings | null
+}
+
 export type ProjectSummary = {
   project: {
     id: string
@@ -146,6 +170,7 @@ export type ProjectSummary = {
     contractType: string | null
     parentProject: string | null
   }
+  members: ReviewUser[]
   metrics: ProjectMetrics
   reviews: ProjectReviewSummary[]
   issues: ProjectIssueSummary[]
@@ -377,7 +402,10 @@ function deriveSettings(reviews: ProjectReviewSummary[], issues: ProjectIssueSum
   const importances = Array.from(new Set(issues.map((issue) => issue.importance))).filter(Boolean)
   const disciplines = Array.from(new Set(issues.map((issue) => issue.discipline))).filter(Boolean)
 
-  const availableMilestones = Array.from(new Set(reviews.map((review) => review.milestone))).filter(Boolean)
+  const availableMilestones = Array.from(new Set(reviews.map((review) => review.milestone)))
+    .filter(Boolean)
+    .map(name => ({ name }))
+
   const selectedMilestones = Array.from(
     new Set(
       reviews
@@ -410,7 +438,7 @@ function deriveSettings(reviews: ProjectReviewSummary[], issues: ProjectIssueSum
   }
 }
 
-function computeLastUpdated(normalizedReviews: NormalizedReview[]): string {
+function computeLastUpdated(normalizedReviews: NormalizedReview[], projectFallback?: string | null): string {
   const timestamps: number[] = []
 
   for (const review of normalizedReviews) {
@@ -428,10 +456,32 @@ function computeLastUpdated(normalizedReviews: NormalizedReview[]): string {
   }
 
   if (!timestamps.length) {
-    return new Date(0).toISOString()
+    return projectFallback ?? new Date(0).toISOString()
   }
 
   return new Date(Math.max(...timestamps)).toISOString()
+}
+
+function mapProjectMembers(projectUsers: ProjectUserRow[] | null | undefined): ReviewUser[] {
+  if (!projectUsers?.length) return []
+
+  return projectUsers.map((entry) => {
+    const user = entry.user
+    const firstName = formatName(user?.first_name)
+    const lastName = formatName(user?.last_name)
+
+    return {
+      id: user?.id ?? entry.id,
+      firstName,
+      lastName,
+      email: user?.email ?? "",
+      jobTitle: formatName(user?.job_title),
+      role: entry.role ?? "Member",
+      avatarFallback: toTitleCaseFallback(firstName, lastName),
+      company: "ColbyGallagher",
+      status: "Active",
+    }
+  })
 }
 
 function mapProjectSummary(project: ProjectWithRelations): ProjectSummary {
@@ -442,8 +492,63 @@ function mapProjectSummary(project: ProjectWithRelations): ProjectSummary {
   const issueSummaries = calculateIssueSummaries(today, reviews)
   const metrics = calculateMetrics(reviewSummaries, issueSummaries)
   const insights = buildInsights(project.id, reviewSummaries, issueSummaries)
-  const lastUpdated = computeLastUpdated(reviews)
-  const settings = deriveSettings(reviewSummaries, issueSummaries)
+  const lastUpdated = computeLastUpdated(reviews, project.updated_at ?? project.created_at)
+
+  // 1. Start with derived defaults
+  const settings: ProjectSettings = deriveSettings(reviewSummaries, issueSummaries)
+
+  // 2. Overwrite with persisted values from normalized tables if they exist
+  if (project.project_milestones?.length) {
+    settings.availableMilestones = project.project_milestones.map(m => ({
+      name: m.name,
+      description: m.description ?? undefined
+    }))
+    settings.selectedMilestones = project.project_milestones
+      .filter(m => m.is_selected)
+      .map(m => m.name)
+  }
+
+  if (project.project_statuses?.length) {
+    settings.statuses = project.project_statuses.map(s => s.name)
+  }
+
+  if (project.project_importances?.length) {
+    settings.importances = project.project_importances.map(i => i.name)
+  }
+
+  if (project.project_disciplines?.length) {
+    settings.disciplines = project.project_disciplines.map(d => d.name)
+  }
+
+  if (project.project_states?.length) {
+    settings.states = project.project_states.map(s => s.name)
+  }
+
+  if (project.project_suitabilities?.length) {
+    settings.suitabilities = project.project_suitabilities.map(s => s.name)
+  }
+
+  if (project.project_review_stages?.length) {
+    settings.defaultReviewTimes = project.project_review_stages.map(s => ({
+      stage: s.stage_name,
+      days: s.days
+    }))
+  }
+
+  if (project.project_response_roles?.length) {
+    settings.defaultResponsePeriods = project.project_response_roles.map(r => ({
+      role: r.role_name,
+      days: r.days
+    }))
+  }
+
+  // 3. Apply single-value settings from the projects.settings JSONB column if they exist
+  const dbSettings = project.settings as any
+  if (dbSettings) {
+    settings.documentNamingConvention = dbSettings.documentNamingConvention ?? settings.documentNamingConvention
+    settings.documentCodeLocation = dbSettings.documentCodeLocation ?? settings.documentCodeLocation
+    settings.titleblockTemplateUrl = dbSettings.titleblockTemplateUrl ?? settings.titleblockTemplateUrl
+  }
 
   return {
     project: {
@@ -455,6 +560,7 @@ function mapProjectSummary(project: ProjectWithRelations): ProjectSummary {
       contractType: project.contract_type ?? null,
       parentProject: project.parent_project ?? null,
     },
+    members: mapProjectMembers(project.project_users),
     metrics,
     reviews: reviewSummaries,
     issues: issueSummaries,
@@ -469,7 +575,7 @@ export async function getProjectSummaries(): Promise<ProjectSummary[]> {
     const supabase = await createServerSupabaseClient()
     const { data, error } = await supabase
       .from("projects")
-      .select("*, reviews(*, documents(*), issues(*))")
+      .select("*, reviews(*, documents(*), issues(*)), project_milestones(*), project_statuses(*), project_importances(*), project_disciplines(*), project_states(*), project_suitabilities(*), project_review_stages(*), project_response_roles(*), project_users(*, user:users(*))")
       .order("project_name")
 
     if (error) {
@@ -490,7 +596,7 @@ export async function getProjectSummaryById(projectId: string): Promise<ProjectS
     const supabase = await createServerSupabaseClient()
     const { data, error } = await supabase
       .from("projects")
-      .select("*, reviews(*, documents(*), issues(*))")
+      .select("*, reviews(*, documents(*), issues(*)), project_milestones(*), project_statuses(*), project_importances(*), project_disciplines(*), project_states(*), project_suitabilities(*), project_review_stages(*), project_response_roles(*), project_users(*, user:users(*))")
       .eq("id", projectId)
       .maybeSingle()
 
@@ -510,4 +616,158 @@ export async function getProjectSummaryById(projectId: string): Promise<ProjectS
   }
 }
 
+export async function updateProjectSettings(projectId: string, settings: ProjectSettings): Promise<void> {
+  try {
+    const supabase = await createServerSupabaseClient()
 
+    // Using a simple sequential strategy for syncing normalized tables.
+    // In a production app, this would ideally use a database transaction or a stored procedure.
+
+    // 1. Update single-value settings in the projects table
+    const { error: projectError } = await (supabase as any)
+      .from("projects")
+      .update({
+        settings: {
+          documentNamingConvention: settings.documentNamingConvention,
+          documentCodeLocation: settings.documentCodeLocation,
+          titleblockTemplateUrl: settings.titleblockTemplateUrl
+        }
+      })
+      .eq("id", projectId)
+
+    if (projectError) throw new Error(projectError.message)
+
+    // 2. Sync Milestones
+    const { error: delMilestonesErr } = await (supabase as any).from("project_milestones").delete().eq("project_id", projectId)
+    if (delMilestonesErr) throw new Error(delMilestonesErr.message)
+
+    if (settings.availableMilestones.length) {
+      const { error: insMilestonesErr } = await (supabase as any).from("project_milestones").insert(
+        settings.availableMilestones.map(m => ({
+          project_id: projectId,
+          name: m.name,
+          description: m.description,
+          is_selected: settings.selectedMilestones.includes(m.name)
+        }))
+      )
+      if (insMilestonesErr) throw new Error(insMilestonesErr.message)
+    }
+
+    // 3. Sync Statuses
+    const { error: delStatusesErr } = await (supabase as any).from("project_statuses").delete().eq("project_id", projectId)
+    if (delStatusesErr) throw new Error(delStatusesErr.message)
+
+    if (settings.statuses.length) {
+      const { error: insStatusesErr } = await (supabase as any).from("project_statuses").insert(
+        settings.statuses.map(name => ({ project_id: projectId, name }))
+      )
+      if (insStatusesErr) throw new Error(insStatusesErr.message)
+    }
+
+    // 4. Sync Importances
+    const { error: delImportancesErr } = await (supabase as any).from("project_importances").delete().eq("project_id", projectId)
+    if (delImportancesErr) throw new Error(delImportancesErr.message)
+
+    if (settings.importances.length) {
+      const { error: insImportancesErr } = await (supabase as any).from("project_importances").insert(
+        settings.importances.map(name => ({ project_id: projectId, name }))
+      )
+      if (insImportancesErr) throw new Error(insImportancesErr.message)
+    }
+
+    // 5. Sync Disciplines
+    const { error: delDisciplinesErr } = await (supabase as any).from("project_disciplines").delete().eq("project_id", projectId)
+    if (delDisciplinesErr) throw new Error(delDisciplinesErr.message)
+
+    if (settings.disciplines.length) {
+      const { error: insDisciplinesErr } = await (supabase as any).from("project_disciplines").insert(
+        settings.disciplines.map(name => ({ project_id: projectId, name }))
+      )
+      if (insDisciplinesErr) throw new Error(insDisciplinesErr.message)
+    }
+
+    // 6. Sync States
+    const { error: delStatesErr } = await (supabase as any).from("project_states").delete().eq("project_id", projectId)
+    if (delStatesErr) throw new Error(delStatesErr.message)
+
+    if (settings.states.length) {
+      const { error: insStatesErr } = await (supabase as any).from("project_states").insert(
+        settings.states.map(name => ({ project_id: projectId, name }))
+      )
+      if (insStatesErr) throw new Error(insStatesErr.message)
+    }
+
+    // 7. Sync Suitabilities
+    const { error: delSuitabilitiesErr } = await (supabase as any).from("project_suitabilities").delete().eq("project_id", projectId)
+    if (delSuitabilitiesErr) throw new Error(delSuitabilitiesErr.message)
+
+    if (settings.suitabilities.length) {
+      const { error: insSuitabilitiesErr } = await (supabase as any).from("project_suitabilities").insert(
+        settings.suitabilities.map(name => ({ project_id: projectId, name }))
+      )
+      if (insSuitabilitiesErr) throw new Error(insSuitabilitiesErr.message)
+    }
+
+    // 8. Sync Review Stages
+    const { error: delStagesErr } = await (supabase as any).from("project_review_stages").delete().eq("project_id", projectId)
+    if (delStagesErr) throw new Error(delStagesErr.message)
+
+    if (settings.defaultReviewTimes.length) {
+      const { error: insStagesErr } = await (supabase as any).from("project_review_stages").insert(
+        settings.defaultReviewTimes.map(s => ({
+          project_id: projectId,
+          stage_name: s.stage,
+          days: s.days
+        }))
+      )
+      if (insStagesErr) throw new Error(insStagesErr.message)
+    }
+
+    // 9. Sync Response Roles
+    const { error: delRolesErr } = await (supabase as any).from("project_response_roles").delete().eq("project_id", projectId)
+    if (delRolesErr) throw new Error(delRolesErr.message)
+
+    if (settings.defaultResponsePeriods.length) {
+      const { error: insRolesErr } = await (supabase as any).from("project_response_roles").insert(
+        settings.defaultResponsePeriods.map(r => ({
+          project_id: projectId,
+          role_name: r.role,
+          days: r.days
+        }))
+      )
+      if (insRolesErr) throw new Error(insRolesErr.message)
+    }
+
+  } catch (error) {
+    throw new Error(
+      `Failed to update settings for project ${projectId}: ${error instanceof Error ? error.message : "Unknown error"}`,
+    )
+  }
+}
+
+export async function updateProjectMilestones(projectId: string, availableMilestones: Milestone[], selectedMilestones: string[]): Promise<void> {
+  try {
+    const supabase = await createServerSupabaseClient()
+
+    // Sync Milestones
+    const { error: delMilestonesErr } = await (supabase as any).from("project_milestones").delete().eq("project_id", projectId)
+    if (delMilestonesErr) throw new Error(delMilestonesErr.message)
+
+    if (availableMilestones.length) {
+      const { error: insMilestonesErr } = await (supabase as any).from("project_milestones").insert(
+        availableMilestones.map(m => ({
+          project_id: projectId,
+          name: m.name,
+          description: m.description,
+          is_selected: selectedMilestones.includes(m.name)
+        }))
+      )
+      if (insMilestonesErr) throw new Error(insMilestonesErr.message)
+    }
+
+  } catch (error) {
+    throw new Error(
+      `Failed to update milestones for project ${projectId}: ${error instanceof Error ? error.message : "Unknown error"}`,
+    )
+  }
+}

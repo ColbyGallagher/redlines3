@@ -1,12 +1,24 @@
 "use client"
 
-import { useMemo } from "react"
+import { useEffect, useMemo, useState } from "react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Calendar, Clock, Download, FileText, MapPin, Users } from "lucide-react"
+import { Calendar, Clock, Download, FileText, MapPin, Trash2, Users } from "lucide-react"
+import { toast } from "sonner"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Checkbox } from "@/components/ui/checkbox"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import {
   Table,
@@ -17,8 +29,19 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb"
 import type { ReviewDetail } from "@/lib/data/reviews"
 import { cn } from "@/lib/utils"
+import { UploadDocumentDialog } from "@/components/reviews/upload-document-dialog"
+import { AddReviewerDialog } from "@/components/reviews/add-reviewer-dialog"
+import { deleteDocument } from "@/lib/actions/documents"
 
 type ReviewDetailsViewProps = {
   review: ReviewDetail
@@ -41,6 +64,131 @@ const importanceBadgeVariant: Record<string, "default" | "secondary" | "destruct
 export function ReviewDetailsView({ review }: ReviewDetailsViewProps) {
   const router = useRouter()
   const statusBadge = statusVariantMap[review.status]
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [selectedDocument, setSelectedDocument] = useState<{ id: string; name: string } | null>(null)
+  const [deleteIssues, setDeleteIssues] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [selectedDocumentIds, setSelectedDocumentIds] = useState<string[]>([])
+  const [bulkDeleteDialogOpen, setBulkDeleteDialogOpen] = useState(false)
+  const [bulkDeleteIncludeIssues, setBulkDeleteIncludeIssues] = useState(false)
+  const [isDeletingSelection, setIsDeletingSelection] = useState(false)
+
+  const handleDeleteDocument = async () => {
+    if (!selectedDocument) return
+
+    setIsDeleting(true)
+    try {
+      const result = await deleteDocument(selectedDocument.id, review.id, deleteIssues)
+      if (result.message === "Success") {
+        toast.success("Document deleted successfully")
+        setDeleteDialogOpen(false)
+        setSelectedDocument(null)
+        setSelectedDocumentIds((prev) => prev.filter((id) => id !== selectedDocument.id))
+      } else {
+        toast.error(result.message || "Failed to delete document")
+      }
+    } catch (error) {
+      toast.error("An unexpected error occurred")
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
+  const openDeleteDialog = (id: string, name: string) => {
+    setSelectedDocument({ id, name })
+    setDeleteDialogOpen(true)
+    setDeleteIssues(false)
+  }
+
+  useEffect(() => {
+    setSelectedDocumentIds((current) =>
+      current.filter((id) => review.documents.some((document) => document.id === id)),
+    )
+  }, [review.documents])
+
+  const selectedDocuments = review.documents.filter((document) =>
+    selectedDocumentIds.includes(document.id),
+  )
+
+  const issuesPerDocument = useMemo(() => {
+    const counts: Record<string, number> = {}
+    for (const issue of review.issues) {
+      const documentId = issue.documentId
+      if (!documentId) {
+        continue
+      }
+
+      counts[documentId] = (counts[documentId] ?? 0) + 1
+    }
+
+    return counts
+  }, [review.issues])
+
+  const toggleDocumentSelection = (documentId: string) => {
+    setSelectedDocumentIds((previous) =>
+      previous.includes(documentId)
+        ? previous.filter((id) => id !== documentId)
+        : [...previous, documentId],
+    )
+  }
+
+  const handleSelectAllDocuments = (checked: boolean | "indeterminate") => {
+    if (checked === true) {
+      setSelectedDocumentIds(review.documents.map((document) => document.id))
+      return
+    }
+
+    setSelectedDocumentIds([])
+  }
+
+  const handleDownloadSelected = () => {
+    if (typeof document === "undefined") {
+      return
+    }
+
+    selectedDocuments.forEach((doc) => {
+      if (!doc.pdfUrl) {
+        return
+      }
+      const link = document.createElement("a")
+      link.href = doc.pdfUrl
+      link.target = "_blank"
+      link.rel = "noreferrer"
+      link.download = doc.documentName || "document"
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+    })
+  }
+
+  const handleBulkDelete = async () => {
+    if (!selectedDocumentIds.length) {
+      return
+    }
+
+    setIsDeletingSelection(true)
+    setBulkDeleteDialogOpen(false)
+
+    try {
+      for (const documentId of selectedDocumentIds) {
+        const result = await deleteDocument(documentId, review.id, bulkDeleteIncludeIssues)
+
+        if (result.message !== "Success") {
+          throw new Error(result.message ?? "Failed to delete documents")
+        }
+      }
+
+      toast.success("Documents deleted successfully")
+      setSelectedDocumentIds([])
+      setBulkDeleteIncludeIssues(false)
+      router.refresh()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to delete selected documents"
+      toast.error(message)
+    } finally {
+      setIsDeletingSelection(false)
+    }
+  }
 
   const documentColumns = useMemo(
     () => [
@@ -51,6 +199,7 @@ export function ReviewDetailsView({ review }: ReviewDetailsViewProps) {
       { id: "suitability", label: "Suitability" },
       { id: "version", label: "Version" },
       { id: "revision", label: "Revision" },
+      { id: "issues", label: "Issues" },
       { id: "fileSize", label: "File size" },
       { id: "uploaded", label: "Uploaded" },
       { id: "actions", label: "" },
@@ -76,6 +225,27 @@ export function ReviewDetailsView({ review }: ReviewDetailsViewProps) {
 
   return (
     <div className="space-y-6">
+      <Breadcrumb className="text-sm">
+        <BreadcrumbList>
+          <BreadcrumbItem>
+            <BreadcrumbLink asChild>
+              <Link href="/dashboard">Dashboard</Link>
+            </BreadcrumbLink>
+          </BreadcrumbItem>
+          <BreadcrumbSeparator />
+          <BreadcrumbItem>
+            <BreadcrumbLink asChild>
+              <Link href={`/projects/${review.project.id}`}>
+                {review.project.projectName || "Project"}
+              </Link>
+            </BreadcrumbLink>
+          </BreadcrumbItem>
+          <BreadcrumbSeparator />
+          <BreadcrumbItem>
+            <BreadcrumbPage>{review.reviewName}</BreadcrumbPage>
+          </BreadcrumbItem>
+        </BreadcrumbList>
+      </Breadcrumb>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="space-y-2">
           <div className="flex items-center gap-3">
@@ -149,30 +319,63 @@ export function ReviewDetailsView({ review }: ReviewDetailsViewProps) {
           </CardContent>
         </Card>
         <Card>
-          <CardHeader className="space-y-1">
-            <CardTitle>Assigned team</CardTitle>
-            <CardDescription>People contributing to this review</CardDescription>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0">
+            <div className="space-y-1">
+              <CardTitle>Assigned team</CardTitle>
+              <CardDescription>People contributing to this review</CardDescription>
+            </div>
+            <AddReviewerDialog
+              reviewId={review.id}
+              existingReviewerIds={review.reviewers.map(r => r.id)}
+            />
           </CardHeader>
-          <CardContent className="space-y-4">
-            {review.reviewers.map((reviewer) => (
-              <div key={reviewer.id} className="flex items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <Avatar className="size-9">
-                    <AvatarFallback>{reviewer.avatarFallback}</AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <p className="font-medium">
-                      {reviewer.firstName} {reviewer.lastName}
-                    </p>
-                    <p className="text-muted-foreground text-xs">{reviewer.email}</p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm font-medium">{reviewer.role}</p>
-                  <p className="text-muted-foreground text-xs">{reviewer.jobTitle}</p>
-                </div>
-              </div>
-            ))}
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Person</TableHead>
+                  <TableHead>Role</TableHead>
+                  <TableHead>Company</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Issues raised</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {review.reviewers.map((reviewer) => {
+                  const issuesRaisedCount = review.issues.filter(
+                    (issue) => issue.createdByUserId === reviewer.id
+                  ).length
+
+                  return (
+                    <TableRow key={reviewer.id}>
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          <Avatar className="size-8">
+                            <AvatarFallback>{reviewer.avatarFallback}</AvatarFallback>
+                          </Avatar>
+                          <div className="flex flex-col">
+                            <span className="font-medium text-sm">
+                              {reviewer.firstName} {reviewer.lastName}
+                            </span>
+                            <span className="text-muted-foreground text-xs">{reviewer.email}</span>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-sm">{reviewer.role}</TableCell>
+                      <TableCell className="text-sm">
+                        {reviewer.company || "ColbyGallagher"}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="font-normal">
+                          {reviewer.status || "Active"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right font-medium">{issuesRaisedCount}</TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
           </CardContent>
         </Card>
       </section>
@@ -184,14 +387,53 @@ export function ReviewDetailsView({ review }: ReviewDetailsViewProps) {
             <p className="text-muted-foreground text-sm">Required files for this review</p>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline">Upload document</Button>
+            <UploadDocumentDialog reviewId={review.id} projectId={review.project.id} />
             <Button variant="ghost">Manage library</Button>
           </div>
         </div>
         <Card>
+          {selectedDocumentIds.length > 0 && (
+            <div className="flex items-center justify-between gap-4 border-b px-4 py-3 text-sm">
+              <p className="text-muted-foreground">
+                {selectedDocumentIds.length} document
+                {selectedDocumentIds.length === 1 ? "" : "s"} selected
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleDownloadSelected}
+                  disabled={!selectedDocumentIds.length}
+                >
+                  Download selected
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => setBulkDeleteDialogOpen(true)}
+                  disabled={isDeletingSelection}
+                >
+                  {isDeletingSelection ? "Deleting…" : "Delete selected"}
+                </Button>
+              </div>
+            </div>
+          )}
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-12 px-2">
+                  <Checkbox
+                    checked={
+                      review.documents.length > 0 && selectedDocumentIds.length === review.documents.length
+                        ? true
+                        : selectedDocumentIds.length > 0
+                          ? "indeterminate"
+                          : false
+                    }
+                    onCheckedChange={(checked) => handleSelectAllDocuments(checked)}
+                    aria-label="Select all documents"
+                  />
+                </TableHead>
                 {documentColumns.map((column) => (
                   <TableHead key={column.id}>{column.label}</TableHead>
                 ))}
@@ -200,13 +442,28 @@ export function ReviewDetailsView({ review }: ReviewDetailsViewProps) {
             <TableBody>
               {review.documents.map((document) => (
                 <TableRow key={document.id}>
-                  <TableCell className="font-medium">{document.documentName}</TableCell>
+                  <TableCell className="px-2">
+                    <Checkbox
+                      checked={selectedDocumentIds.includes(document.id)}
+                      onCheckedChange={(checked) => toggleDocumentSelection(document.id)}
+                      aria-label={`Select ${document.documentName}`}
+                    />
+                  </TableCell>
+                  <TableCell className="font-medium">
+                    <Link
+                      href={`/reviews/${review.id}/documents/${document.id}`}
+                      className="text-primary hover:underline font-medium text-left"
+                    >
+                      {document.documentName}
+                    </Link>
+                  </TableCell>
                   <TableCell>{document.documentCode}</TableCell>
                   <TableCell>{document.state}</TableCell>
                   <TableCell>{document.milestone}</TableCell>
                   <TableCell>{document.suitability}</TableCell>
                   <TableCell>{document.version}</TableCell>
                   <TableCell>{document.revision}</TableCell>
+                  <TableCell>{issuesPerDocument[document.id] ?? 0}</TableCell>
                   <TableCell>{document.fileSize}</TableCell>
                   <TableCell>{formatDate(document.uploadedAt)}</TableCell>
                   <TableCell className="text-right">
@@ -222,6 +479,15 @@ export function ReviewDetailsView({ review }: ReviewDetailsViewProps) {
                     <Button variant="ghost" size="sm" className="gap-1">
                       <Download className="size-4" />
                       Download
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="gap-1 text-destructive hover:text-destructive hover:bg-destructive/10"
+                      onClick={() => openDeleteDialog(document.id, document.documentName)}
+                    >
+                      <Trash2 className="size-4" />
+                      Delete
                     </Button>
                   </TableCell>
                 </TableRow>
@@ -259,7 +525,7 @@ export function ReviewDetailsView({ review }: ReviewDetailsViewProps) {
                     <Badge variant={importanceBadgeVariant[issue.importance] ?? "secondary"}>{issue.importance}</Badge>
                   </TableCell>
                   <TableCell>{issue.discipline}</TableCell>
-                <TableCell>{lookupDocumentName(review, issue.documentId)}</TableCell>
+                  <TableCell>{lookupDocumentName(review, issue.documentId)}</TableCell>
                   <TableCell>{issue.pageNumber}</TableCell>
                   <TableCell>{issue.commentCoordinates}</TableCell>
                   <TableCell>{formatDate(issue.dateCreated)}</TableCell>
@@ -316,6 +582,79 @@ export function ReviewDetailsView({ review }: ReviewDetailsViewProps) {
           </Card>
         </div>
       </section>
+
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete document</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete <span className="font-semibold text-foreground">"{selectedDocument?.name}"</span>?
+              This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex items-center space-x-2 py-4">
+            <Checkbox
+              id="deleteIssues"
+              checked={deleteIssues}
+              onCheckedChange={(checked: boolean) => setDeleteIssues(checked)}
+            />
+            <Label
+              htmlFor="deleteIssues"
+              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+            >
+              Delete associated issues and annotations
+            </Label>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} disabled={isDeleting}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteDocument} disabled={isDeleting}>
+              {isDeleting ? "Deleting..." : "Confirm Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={bulkDeleteDialogOpen} onOpenChange={(next) => {
+        if (!next) {
+          setBulkDeleteIncludeIssues(false)
+        }
+        setBulkDeleteDialogOpen(next)
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete selected documents</DialogTitle>
+            <DialogDescription>
+              Remove {selectedDocumentIds.length} document{selectedDocumentIds.length === 1 ? "" : "s"} from this review. This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex items-center space-x-2 py-4">
+            <Checkbox
+              id="bulkDeleteIssues"
+              checked={bulkDeleteIncludeIssues}
+              onCheckedChange={(checked: boolean) => setBulkDeleteIncludeIssues(checked)}
+            />
+            <Label
+              htmlFor="bulkDeleteIssues"
+              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+            >
+              Delete associated issues and annotations
+            </Label>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkDeleteDialogOpen(false)} disabled={isDeletingSelection}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleBulkDelete} disabled={isDeletingSelection}>
+              {isDeletingSelection ? "Deleting..." : "Confirm Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -326,7 +665,7 @@ function formatDate(value: string) {
     return value
   }
 
-  return date.toLocaleDateString(undefined, {
+  return date.toLocaleDateString("en-GB", {
     year: "numeric",
     month: "short",
     day: "numeric",

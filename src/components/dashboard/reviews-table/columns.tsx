@@ -41,7 +41,7 @@ function formatDateLabel(value: string) {
     return value
   }
 
-  return `${MONTH_LABELS[monthIndex]} ${dayNumber}, ${year}`
+  return `${dayNumber} ${MONTH_LABELS[monthIndex]} ${year}`
 }
 
 export const columns: ColumnDef<ReviewSummary>[] = [

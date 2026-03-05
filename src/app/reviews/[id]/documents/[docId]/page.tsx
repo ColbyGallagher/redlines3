@@ -1,7 +1,9 @@
+import Link from "next/link"
 import { notFound } from "next/navigation"
 
-import { PDFMarkupViewer } from "@/components/reviews/pdf-markup-viewer"
-import { getDocumentForReview, getReviewDetailById } from "@/lib/data/reviews"
+import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb"
+import { PDFMarkupViewerClient } from "@/components/reviews/pdf-markup-client-wrapper"
+import { getAnnotationsForDocument, getDocumentForReview, getReviewDetailById } from "@/lib/data/reviews"
 
 type ReviewDocumentPageProps = {
   params: {
@@ -11,40 +13,50 @@ type ReviewDocumentPageProps = {
 }
 
 export default async function ReviewDocumentPage({ params }: ReviewDocumentPageProps) {
-  const review = await getReviewDetailById(params.id)
+  const [review, document, initialAnnotations] = await Promise.all([
+    getReviewDetailById(params.id),
+    getDocumentForReview(params.id, params.docId),
+    getAnnotationsForDocument(params.docId)
+  ])
 
-  if (!review) {
-    notFound()
-  }
-
-  const document = await getDocumentForReview(params.id, params.docId)
-
-  if (!document) {
+  if (!review || !document) {
     notFound()
   }
 
   return (
     <div className="flex h-full flex-col gap-6 p-6">
-      <header className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <p className="text-sm text-muted-foreground">{review.reviewName}</p>
-          <h1 className="text-2xl font-semibold tracking-tight">{document.documentName}</h1>
-          <p className="text-xs text-muted-foreground">
-            {document.documentCode}
-            {document.fileSize ? " • " + document.fileSize : ""}
-          </p>
-        </div>
-      </header>
-
+      <Breadcrumb className="text-sm">
+        <BreadcrumbList>
+          <BreadcrumbItem>
+            <BreadcrumbLink asChild>
+              <Link href={`/projects/${review.project.id}`}>
+                {review.project.projectName || "Project"}
+              </Link>
+            </BreadcrumbLink>
+          </BreadcrumbItem>
+          <BreadcrumbSeparator />
+          <BreadcrumbItem>
+            <BreadcrumbLink asChild>
+              <Link href={`/reviews/${review.id}`}>{review.reviewName}</Link>
+            </BreadcrumbLink>
+          </BreadcrumbItem>
+          <BreadcrumbSeparator />
+          <BreadcrumbItem>
+            <BreadcrumbPage>{document.documentName}</BreadcrumbPage>
+          </BreadcrumbItem>
+        </BreadcrumbList>
+      </Breadcrumb>
       <section className="flex flex-1 overflow-hidden rounded-lg border bg-background shadow-sm">
-        <PDFMarkupViewer
+        <PDFMarkupViewerClient
           reviewId={review.id}
           document={{
             id: document.id,
             name: document.documentName ?? "Untitled document",
             code: document.documentCode ?? "",
             pdfUrl: document.pdfUrl ?? "",
+            projectId: review.project.id,
           }}
+          initialAnnotations={initialAnnotations}
         />
       </section>
     </div>

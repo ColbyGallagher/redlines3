@@ -15,6 +15,10 @@ type DbAnnotation = {
   y: number
   content: string
   color: string
+  classification: string | null
+  priority: string | null
+  type: string
+  issue_id: string | null
   created_by: string
   created_at: string
 }
@@ -28,23 +32,28 @@ export type RealtimeAnnotation = {
   y: number
   content: string
   color: string
+  classification: string | null
+  priority: string | null
+  type: string
+  issueId: string | null
   createdBy: string
   createdAt: string
 }
 
 export type AnnotationEvent =
   | {
-      type: "INSERT" | "UPDATE"
-      annotation: RealtimeAnnotation
-    }
+    type: "INSERT" | "UPDATE"
+    annotation: RealtimeAnnotation
+  }
   | {
-      type: "DELETE"
-      annotation: { id: string }
-    }
+    type: "DELETE"
+    annotation: { id: string }
+  }
 
 type UseAnnotationsChannelOptions = {
   reviewId: string
   documentId: string
+  initialAnnotations?: RealtimeAnnotation[]
   onInitialLoad?: (annotations: RealtimeAnnotation[]) => void
   onEvent?: (event: AnnotationEvent) => void
 }
@@ -56,6 +65,9 @@ type TextAnnotationInput = {
   y: number
   content: string
   color: string
+  classification?: string | null
+  priority?: string | null
+  type: string
   createdBy: string
   createdAt: string
 }
@@ -63,6 +75,7 @@ type TextAnnotationInput = {
 export function useAnnotationsChannel({
   reviewId,
   documentId,
+  initialAnnotations,
   onInitialLoad,
   onEvent,
 }: UseAnnotationsChannelOptions) {
@@ -79,6 +92,14 @@ export function useAnnotationsChannel({
     let isActive = true
 
     async function fetchAnnotations() {
+      if (initialAnnotations && initialAnnotations.length > 0) {
+        if (onInitialLoad && isActive) {
+          onInitialLoad(initialAnnotations);
+        }
+        setIsReady(true);
+        return;
+      }
+
       const { data, error } = await supabase
         .from(TABLE_NAME)
         .select("*")
@@ -145,13 +166,33 @@ export function useAnnotationsChannel({
       y: input.y,
       content: input.content,
       color: input.color,
+      classification: input.classification || null,
+      priority: input.priority || null,
+      type: input.type,
+      issue_id: null,
       created_by: input.createdBy,
       created_at: input.createdAt,
     }
 
     const { error } = await supabase.from(TABLE_NAME).insert(payload)
     if (error) {
-      console.error("Failed to create annotation", error)
+      console.error("Failed to create annotation:", error.message)
+    }
+  }
+
+  const updateAnnotation = async (id: string, updates: Partial<RealtimeAnnotation>) => {
+    // Map realtime fields back to DB fields
+    const payload: any = {}
+    if (updates.content !== undefined) payload.content = updates.content
+    if (updates.color !== undefined) payload.color = updates.color
+    if (updates.classification !== undefined) payload.classification = updates.classification
+    if (updates.priority !== undefined) payload.priority = updates.priority
+    if (updates.type !== undefined) payload.type = updates.type
+    if (updates.issueId !== undefined) payload.issue_id = updates.issueId
+
+    const { error } = await supabase.from(TABLE_NAME).update(payload).eq("id", id)
+    if (error) {
+      console.error("Failed to update annotation:", error.message)
     }
   }
 
@@ -164,9 +205,10 @@ export function useAnnotationsChannel({
 
   return isReady
     ? {
-        createAnnotation,
-        deleteAnnotation,
-      }
+      createAnnotation,
+      updateAnnotation,
+      deleteAnnotation,
+    }
     : null
 }
 
@@ -180,6 +222,10 @@ function mapDbToRealtime(record: DbAnnotation): RealtimeAnnotation {
     y: record.y,
     content: record.content,
     color: record.color,
+    classification: record.classification,
+    priority: record.priority,
+    type: record.type,
+    issueId: record.issue_id,
     createdBy: record.created_by,
     createdAt: record.created_at,
   }

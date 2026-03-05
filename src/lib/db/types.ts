@@ -15,6 +15,7 @@ export type Project = {
   status: string | null
   parent_project: string | null
   contract_type: string | null
+  settings: any | null
   created_at?: string | null
   updated_at?: string | null
 }
@@ -74,6 +75,64 @@ export type Issue = {
   is_long_open?: boolean | null
 }
 
+export type ProjectMilestone = {
+  id: string
+  project_id: string
+  name: string
+  description: string | null
+  is_selected: boolean
+}
+
+export type ProjectStatus = {
+  id: string
+  project_id: string
+  name: string
+}
+
+export type ProjectImportance = {
+  id: string
+  project_id: string
+  name: string
+}
+
+export type ProjectDiscipline = {
+  id: string
+  project_id: string
+  name: string
+}
+
+export type ProjectState = {
+  id: string
+  project_id: string
+  name: string
+}
+
+export type ProjectSuitability = {
+  id: string
+  project_id: string
+  name: string
+}
+
+export type ProjectReviewStage = {
+  id: string
+  project_id: string
+  stage_name: string
+  days: number
+}
+
+export type ProjectResponseRole = {
+  id: string
+  project_id: string
+  role_name: string
+  days: number
+}
+
+export type Company = {
+  id: string
+  name: string
+  company_code: string | null
+}
+
 export type User = {
   id: string
   first_name: string
@@ -88,6 +147,17 @@ export type ReviewUser = {
   review_id: string
   user_id: string
   role: string | null
+  user_name: string | null
+  company_name: string | null
+}
+
+export type ProjectUser = {
+  id: string
+  project_id: string
+  user_id: string
+  role: string | null
+  user_name: string | null
+  company_name: string | null
 }
 
 type TableDefinition<T> = {
@@ -102,14 +172,23 @@ type TableDefinition<T> = {
 }
 
 export type Database = {
-  redlines: {
+  public: {
     Tables: {
       projects: TableDefinition<Project>
       reviews: TableDefinition<Review>
       documents: TableDefinition<Document>
       issues: TableDefinition<Issue>
+      project_milestones: TableDefinition<ProjectMilestone>
+      project_statuses: TableDefinition<ProjectStatus>
+      project_importances: TableDefinition<ProjectImportance>
+      project_disciplines: TableDefinition<ProjectDiscipline>
+      project_states: TableDefinition<ProjectState>
+      project_suitabilities: TableDefinition<ProjectSuitability>
+      project_review_stages: TableDefinition<ProjectReviewStage>
+      project_response_roles: TableDefinition<ProjectResponseRole>
       users: TableDefinition<User>
       review_users: TableDefinition<ReviewUser>
+      project_users: TableDefinition<ProjectUser>
     }
     Views: Record<string, never>
     Functions: Record<string, never>
