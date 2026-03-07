@@ -19,6 +19,7 @@ export type ReviewUser = {
   email: string
   jobTitle: string
   role: string
+  roleId?: string
   avatarFallback: string
   company?: string
   status?: string

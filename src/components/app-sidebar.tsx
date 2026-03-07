@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   Settings,
   Settings2,
+  ShieldCheck,
   SlidersHorizontal,
   Users,
 } from "lucide-react"
@@ -48,6 +49,13 @@ type SidebarProject = {
   url: string
 }
 
+type SidebarCompany = {
+  id: string
+  name: string
+  plan: string
+  active: boolean
+}
+
 type SidebarReview = {
   id: string
   name: string
@@ -56,6 +64,7 @@ type SidebarReview = {
 
 type SidebarApiResponse = {
   projects: SidebarProject[]
+  companies: SidebarCompany[]
   reviews: SidebarReview[]
   user?: {
     first_name: string
@@ -93,10 +102,16 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname()
   const { state } = useSidebar()
   const [projects, setProjects] = useState<SidebarProject[]>([])
+  const [companies, setCompanies] = useState<SidebarCompany[]>([])
   const [recentReviews, setRecentReviews] = useState<SidebarReview[]>([])
   const [user, setUser] = useState(data.user)
   const [sidebarError, setSidebarError] = useState<string | null>(null)
   const [isLoadingSidebar, setIsLoadingSidebar] = useState(true)
+  const [isMounted, setIsMounted] = useState(false)
+
+  useEffect(() => {
+    setIsMounted(true)
+  }, [])
 
   useEffect(() => {
     async function loadSidebarData() {
@@ -126,13 +141,15 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
         const payload = (await response.json()) as SidebarApiResponse
         setProjects(payload.projects)
+        setCompanies(payload.companies || [])
         setRecentReviews(payload.reviews)
         if (payload.user) {
           setUser({
             name: [payload.user.first_name, payload.user.last_name].filter(Boolean).join(" ") || "User",
             email: payload.user.email,
             avatar: "",
-          })
+            roles: (payload.user as any).roles || [],
+          } as any)
         }
         setSidebarError(null)
       } catch (error) {
@@ -146,7 +163,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     void loadSidebarData()
   }, [])
 
-  const isOverviewActive = useMemo(() => {
+  const isDashboardActive = useMemo(() => {
     if (!pathname) return false
     return pathname === "/" || pathname.startsWith("/dashboard")
   }, [pathname])
@@ -156,13 +173,29 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     const match = pathname.match(/^\/projects\/([^/]+)/)
     return match ? match[1] : undefined
   }, [pathname])
+  const isAdmin = useMemo(() => {
+    if (!user || !(user as any).roles) return false
+    const roles = (user as any).roles as string[]
+    return roles.includes("developer") || roles.includes("org admin")
+  }, [user])
+
+  if (!isMounted) {
+    return null
+  }
 
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
         <div className="flex items-center gap-2 px-1 group-data-[state=collapsed]:justify-center">
           <div className="group-data-[state=collapsed]:hidden flex-1">
-            <TeamSwitcher teams={data.teams} />
+            <TeamSwitcher
+              teams={companies.map(c => ({
+                id: c.id,
+                name: c.name,
+                logo: Folder,
+                plan: c.plan
+              }))}
+            />
           </div>
           <SidebarTrigger className="hidden md:flex" />
         </div>
@@ -171,11 +204,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <SidebarGroup>
           <SidebarMenu>
             <SidebarMenuItem>
-              <SidebarMenuButton asChild isActive={isOverviewActive} tooltip="Overview">
-                <a href="/dashboard">
+              <SidebarMenuButton asChild isActive={isDashboardActive} tooltip="Dashboard">
+                <Link href="/dashboard">
                   <LayoutDashboard />
-                  <span>Overview</span>
-                </a>
+                  <span>Dashboard</span>
+                </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
@@ -256,10 +289,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton asChild tooltip="Tutorials">
-                <a href="#">
+                <Link href="#">
                   <BookOpen />
                   <span>Tutorials</span>
-                </a>
+                </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
@@ -268,37 +301,24 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <SidebarGroup className="group-data-[collapsible=icon]:hidden">
           <SidebarGroupLabel>Settings</SidebarGroupLabel>
           <SidebarMenu>
-            <Collapsible asChild>
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild isActive={pathname === "/settings"} tooltip="Settings">
+                <Link href="/settings">
+                  <Settings />
+                  <span>Settings</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            {isAdmin && (
               <SidebarMenuItem>
-                <CollapsibleTrigger asChild>
-                  <SidebarMenuButton tooltip="Settings">
-                    <Settings />
-                    <span>Settings</span>
-                    <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
-                  </SidebarMenuButton>
-                </CollapsibleTrigger>
-                <CollapsibleContent>
-                  <SidebarMenuSub>
-                    <SidebarMenuSubItem>
-                      <SidebarMenuSubButton asChild>
-                        <a href="#">
-                          <SlidersHorizontal />
-                          <span>General</span>
-                        </a>
-                      </SidebarMenuSubButton>
-                    </SidebarMenuSubItem>
-                    <SidebarMenuSubItem>
-                      <SidebarMenuSubButton asChild>
-                        <a href="#">
-                          <Users />
-                          <span>Team</span>
-                        </a>
-                      </SidebarMenuSubButton>
-                    </SidebarMenuSubItem>
-                  </SidebarMenuSub>
-                </CollapsibleContent>
+                <SidebarMenuButton asChild isActive={pathname === "/admin"} tooltip="Admin">
+                  <Link href="/admin">
+                    <ShieldCheck />
+                    <span>Admin</span>
+                  </Link>
+                </SidebarMenuButton>
               </SidebarMenuItem>
-            </Collapsible>
+            )}
           </SidebarMenu>
         </SidebarGroup>
       </SidebarContent>
