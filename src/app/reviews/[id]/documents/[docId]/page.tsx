@@ -6,17 +6,18 @@ import { PDFMarkupViewerClient } from "@/components/reviews/pdf-markup-client-wr
 import { getAnnotationsForDocument, getDocumentForReview, getReviewDetailById } from "@/lib/data/reviews"
 
 type ReviewDocumentPageProps = {
-  params: {
+  params: Promise<{
     id: string
     docId: string
-  }
+  }>
 }
 
 export default async function ReviewDocumentPage({ params }: ReviewDocumentPageProps) {
+  const { id, docId } = await params
   const [review, document, initialAnnotations] = await Promise.all([
-    getReviewDetailById(params.id),
-    getDocumentForReview(params.id, params.docId),
-    getAnnotationsForDocument(params.docId)
+    getReviewDetailById(id),
+    getDocumentForReview(id, docId),
+    getAnnotationsForDocument(docId)
   ])
 
   if (!review || !document) {

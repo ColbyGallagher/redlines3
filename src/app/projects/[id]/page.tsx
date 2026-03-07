@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation"
 import Link from "next/link"
-import { Settings2 } from "lucide-react"
+import { Settings2, Trash2 } from "lucide-react"
 
 import { InsightCallouts } from "@/components/projects/insight-callouts"
 import { IssuesTable } from "@/components/projects/issues-table"
@@ -12,7 +12,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { AddProjectMemberDialog } from "@/components/projects/add-project-member-dialog"
+import { MemberActions } from "@/components/projects/member-actions"
+import { AccessDenied } from "@/components/projects/access-denied"
 import { getProjectSummaryById } from "@/lib/data/projects"
+import { getRoles } from "@/lib/actions/users"
 
 type ProjectDashboardPageProps = {
   params: Promise<{
@@ -30,8 +33,10 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
   const summary = await getProjectSummaryById(id)
 
   if (!summary) {
-    redirect("/projects")
+    return <AccessDenied projectId={id} />
   }
+
+  const roles = await getRoles()
 
   const showSuccessMessage = created === "1"
   const successBannerMessage = showSuccessMessage
@@ -80,6 +85,7 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
                     <TableHead>Company</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Issues raised</TableHead>
+                    <TableHead className="w-[50px]"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -108,7 +114,11 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
                             </div>
                           </div>
                         </TableCell>
-                        <TableCell className="text-sm">{member.role}</TableCell>
+                        <TableCell className="text-sm">
+                          <div className="flex items-center gap-2">
+                            {member.role}
+                          </div>
+                        </TableCell>
                         <TableCell className="text-sm">
                           {member.company || "ColbyGallagher"}
                         </TableCell>
@@ -123,6 +133,15 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
                             or updating the project summary map.
                           */}
                           0
+                        </TableCell>
+                        <TableCell>
+                          <MemberActions
+                            projectId={id}
+                            userId={member.id}
+                            userName={`${member.firstName} ${member.lastName}`}
+                            currentRoleId={member.roleId}
+                            roles={roles}
+                          />
                         </TableCell>
                       </TableRow>
                     )

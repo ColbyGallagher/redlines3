@@ -15,6 +15,7 @@ export type Project = {
   status: string | null
   parent_project: string | null
   contract_type: string | null
+  company_id: string | null
   settings: any | null
   created_at?: string | null
   updated_at?: string | null
@@ -142,6 +143,20 @@ export type User = {
   job_title: string | null
 }
 
+export type Role = {
+  id: string
+  name: string
+  company_id: string | null
+}
+
+export type UserCompany = {
+  id: string
+  user_id: string
+  company_id: string
+  role_id: string | null
+  active: boolean
+}
+
 export type ReviewUser = {
   id: string
   review_id: string
@@ -156,6 +171,7 @@ export type ProjectUser = {
   project_id: string
   user_id: string
   role: string | null
+  role_id: string | null
   user_name: string | null
   company_name: string | null
 }
@@ -187,6 +203,9 @@ export type Database = {
       project_review_stages: TableDefinition<ProjectReviewStage>
       project_response_roles: TableDefinition<ProjectResponseRole>
       users: TableDefinition<User>
+      companies: TableDefinition<Company>
+      roles: TableDefinition<Role>
+      user_companies: TableDefinition<UserCompany>
       review_users: TableDefinition<ReviewUser>
       project_users: TableDefinition<ProjectUser>
     }

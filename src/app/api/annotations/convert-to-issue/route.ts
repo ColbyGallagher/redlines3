@@ -101,7 +101,7 @@ export async function POST(request: Request) {
             documentId,
             annotationIds,
             discipline,
-            importance,
+            importance: importance as "High" | "Medium" | "Low",
             comment,
             pageNumber,
         })

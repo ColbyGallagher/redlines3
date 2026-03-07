@@ -24,7 +24,7 @@ type CreateProjectRequestBody = {
   teamAssignments?: unknown
 }
 
-type ProjectRow = Database["redlines"]["Tables"]["projects"]["Row"]
+type ProjectRow = Database["public"]["Tables"]["projects"]["Row"]
 
 function normalizeRequiredString(value: unknown, fieldName: string) {
   if (typeof value !== "string") {
@@ -94,13 +94,26 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "You must be signed in to create a project." }, { status: 401 })
     }
 
-    const insertPayload: Database["redlines"]["Tables"]["projects"]["Insert"] = {
+    // Get the user's current/primary company
+    const { data: userCompany, error: companyError } = await (supabase as any)
+      .from("user_companies")
+      .select("company_id")
+      .eq("user_id", user.id)
+      .eq("active", true)
+      .maybeSingle()
+
+    if (companyError || !userCompany) {
+      return NextResponse.json({ error: "No active organization found for this user." }, { status: 400 })
+    }
+
+    const insertPayload: any = {
       project_name: projectName,
       project_number: projectNumber,
       project_location: projectLocation,
       parent_project: parentProject,
       status,
       contract_type: contractType,
+      company_id: userCompany.company_id,
     }
 
     // TODO: replace with typed insert once Supabase schema typings are fully defined.
@@ -113,14 +126,7 @@ export async function POST(request: Request) {
     if (error) {
       console.error("Supabase insert error", {
         error,
-        payload: {
-          projectName,
-          projectNumber,
-          projectLocation,
-          parentProject,
-          status,
-          contractType,
-        },
+        payload: insertPayload,
       })
       throw new Error(error.message)
     }
@@ -140,5 +146,3 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: message }, { status: 400 })
   }
 }
-
-

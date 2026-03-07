@@ -25,6 +25,7 @@ type ReviewWithRelations = ReviewRow & {
 
 type ProjectUserRow = Database["public"]["Tables"]["project_users"]["Row"] & {
   user: Database["public"]["Tables"]["users"]["Row"] | null
+  roles: Database["public"]["Tables"]["roles"]["Row"] | null
 }
 
 type ProjectWithRelations = ProjectRow & {
@@ -476,7 +477,8 @@ function mapProjectMembers(projectUsers: ProjectUserRow[] | null | undefined): R
       lastName,
       email: user?.email ?? "",
       jobTitle: formatName(user?.job_title),
-      role: entry.role ?? "Member",
+      role: entry.roles?.name ?? entry.role ?? "Member",
+      roleId: entry.role_id ?? undefined,
       avatarFallback: toTitleCaseFallback(firstName, lastName),
       company: "ColbyGallagher",
       status: "Active",
@@ -575,7 +577,7 @@ export async function getProjectSummaries(): Promise<ProjectSummary[]> {
     const supabase = await createServerSupabaseClient()
     const { data, error } = await supabase
       .from("projects")
-      .select("*, reviews(*, documents(*), issues(*)), project_milestones(*), project_statuses(*), project_importances(*), project_disciplines(*), project_states(*), project_suitabilities(*), project_review_stages(*), project_response_roles(*), project_users(*, user:users(*))")
+      .select("*, reviews(*, documents(*), issues(*)), project_milestones(*), project_statuses(*), project_importances(*), project_disciplines(*), project_states(*), project_suitabilities(*), project_review_stages(*), project_response_roles(*), project_users(*, user:users(*), roles:roles(*))")
       .order("project_name")
 
     if (error) {
@@ -596,7 +598,7 @@ export async function getProjectSummaryById(projectId: string): Promise<ProjectS
     const supabase = await createServerSupabaseClient()
     const { data, error } = await supabase
       .from("projects")
-      .select("*, reviews(*, documents(*), issues(*)), project_milestones(*), project_statuses(*), project_importances(*), project_disciplines(*), project_states(*), project_suitabilities(*), project_review_stages(*), project_response_roles(*), project_users(*, user:users(*))")
+      .select("*, reviews(*, documents(*), issues(*)), project_milestones(*), project_statuses(*), project_importances(*), project_disciplines(*), project_states(*), project_suitabilities(*), project_review_stages(*), project_response_roles(*), project_users(*, user:users(*), roles:roles(*))")
       .eq("id", projectId)
       .maybeSingle()
 

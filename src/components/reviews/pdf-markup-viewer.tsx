@@ -344,10 +344,12 @@ export function PDFMarkupViewer({ reviewId, document, initialAnnotations }: PDFM
       const annotationId = placementCoords ? crypto.randomUUID() : selectedAnnotation!.id
       const pageNumber = placementCoords ? placementCoords.page : selectedAnnotation!.page
 
+      let baseAnnotation: RealtimeAnnotation | undefined = selectedAnnotation
+
       // 1. If new placement, create the annotation first
       if (placementCoords) {
         const creator = currentUser ? `${currentUser.first_name} ${currentUser.last_name}`.trim() : "demo-user"
-        const newAnnotation: RealtimeAnnotation = {
+        baseAnnotation = {
           id: annotationId,
           reviewId,
           documentId: document.id,
@@ -365,10 +367,10 @@ export function PDFMarkupViewer({ reviewId, document, initialAnnotations }: PDFM
         }
 
         // Optimistic update
-        setAnnotations((current) => [...current, newAnnotation])
+        setAnnotations((current) => [...current, baseAnnotation!])
 
         await channel?.createAnnotation({
-          ...newAnnotation,
+          ...baseAnnotation!,
         })
       }
 
@@ -400,6 +402,12 @@ export function PDFMarkupViewer({ reviewId, document, initialAnnotations }: PDFM
             ann.id === annotationId ? { ...ann, issueId: payload.issue.id } : ann
           )
         )
+        if (baseAnnotation) {
+          channel?.broadcastEvent({
+            type: "UPDATE",
+            annotation: { ...baseAnnotation, issueId: payload.issue.id }
+          })
+        }
       }
 
       toast.success("Issue created successfully.")
@@ -887,13 +895,17 @@ function renderLoading(container: HTMLDivElement | null) {
   )
 }
 
-function applyRealtimeEvent(current: RealtimeAnnotation[], event: AnnotationEvent) {
-  if (event.type === "INSERT" || event.type === "UPDATE") {
+function applyRealtimeEvent(current: RealtimeAnnotation[], event: AnnotationEvent): RealtimeAnnotation[] {
+  if (event.type === "INSERT") {
     const existing = current.find((item) => item.id === event.annotation.id)
     if (existing) {
-      return current.map((item) => (item.id === event.annotation.id ? event.annotation : item))
+      return current.map((item) => (item.id === event.annotation.id ? { ...item, ...event.annotation } as RealtimeAnnotation : item))
     }
-    return [...current, event.annotation]
+    return [...current, event.annotation as RealtimeAnnotation]
+  }
+
+  if (event.type === "UPDATE") {
+    return current.map((item) => (item.id === event.annotation.id ? { ...item, ...event.annotation } as RealtimeAnnotation : item))
   }
 
   if (event.type === "DELETE") {
