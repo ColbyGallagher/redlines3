@@ -16,6 +16,7 @@ export type Project = {
   parent_project: string | null
   contract_type: string | null
   company_id: string | null
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   settings: any | null
   created_at?: string | null
   updated_at?: string | null

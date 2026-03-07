@@ -335,6 +335,7 @@ export async function getAnnotationsForDocument(documentId: string) {
       throw new Error(error.message)
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return (data || []).map((record: any) => ({
       id: record.id,
       reviewId: record.review_id,
