@@ -37,6 +37,8 @@ export type ReviewDocument = {
   pdfUrl: string
   fileSize: string
   uploadedAt: string
+  parentId?: string
+  pageNumber?: number
 }
 
 export type ReviewIssue = {
@@ -161,6 +163,8 @@ function mapDocuments(documents: DocumentRow[] | null | undefined): ReviewDocume
     pdfUrl: document.pdf_url ?? "",
     fileSize: document.file_size ?? "",
     uploadedAt: document.uploaded_at ?? "",
+    parentId: document.parent_id ?? undefined,
+    pageNumber: document.page_number ?? undefined,
   }))
 }
 
@@ -318,6 +322,32 @@ export async function getDocumentForReview(reviewId: string, documentId: string)
       `Failed to fetch document ${documentId} for review ${reviewId}: ${error instanceof Error ? error.message : "Unknown error"
       }`,
     )
+  }
+}
+
+export async function getChildDocuments(parentId: string): Promise<ReviewDocument[]> {
+  try {
+    const supabase = await createServerSupabaseClient()
+
+    const { data, error } = await supabase
+      .from("documents")
+      .select("*")
+      .eq("parent_id", parentId)
+      .order("page_number", { ascending: true })
+
+    if (error) {
+      throw new Error(error.message)
+    }
+
+    if (!data || !Array.isArray(data)) {
+      return []
+    }
+
+    const records = data as unknown as DocumentRow[]
+    return mapDocuments(records)
+  } catch (error) {
+    console.error(`Failed to fetch child documents for parent ${parentId}`, error)
+    return []
   }
 }
 

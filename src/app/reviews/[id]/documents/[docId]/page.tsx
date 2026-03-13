@@ -3,21 +3,26 @@ import { notFound } from "next/navigation"
 
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb"
 import { PDFMarkupViewerClient } from "@/components/reviews/pdf-markup-client-wrapper"
-import { getAnnotationsForDocument, getDocumentForReview, getReviewDetailById } from "@/lib/data/reviews"
+import { getAnnotationsForDocument, getChildDocuments, getDocumentForReview, getReviewDetailById } from "@/lib/data/reviews"
 
 type ReviewDocumentPageProps = {
   params: Promise<{
     id: string
     docId: string
   }>
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>
 }
 
-export default async function ReviewDocumentPage({ params }: ReviewDocumentPageProps) {
+export default async function ReviewDocumentPage({ params, searchParams }: ReviewDocumentPageProps) {
   const { id, docId } = await params
-  const [review, document, initialAnnotations] = await Promise.all([
+  const { page } = await searchParams
+  const initialPage = typeof page === "string" ? parseInt(page, 10) : undefined
+
+  const [review, document, initialAnnotations, childDocuments] = await Promise.all([
     getReviewDetailById(id),
     getDocumentForReview(id, docId),
-    getAnnotationsForDocument(docId)
+    getAnnotationsForDocument(docId),
+    getChildDocuments(docId)
   ])
 
   if (!review || !document) {
@@ -25,7 +30,7 @@ export default async function ReviewDocumentPage({ params }: ReviewDocumentPageP
   }
 
   return (
-    <div className="flex h-full flex-col gap-6 p-6">
+    <div className="flex h-screen flex-col gap-4 p-4 overflow-hidden">
       <Breadcrumb className="text-sm">
         <BreadcrumbList>
           <BreadcrumbItem>
@@ -57,7 +62,9 @@ export default async function ReviewDocumentPage({ params }: ReviewDocumentPageP
             pdfUrl: document.pdfUrl ?? "",
             projectId: review.project.id,
           }}
+          childDocuments={childDocuments}
           initialAnnotations={initialAnnotations}
+          initialPage={initialPage}
         />
       </section>
     </div>

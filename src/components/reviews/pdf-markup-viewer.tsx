@@ -1,15 +1,18 @@
 "use client"
 
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { FormEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { PDFDocument, rgb } from "pdf-lib"
 import { Document, Page, pdfjs } from "react-pdf"
-import { AlertTriangle, Loader2, Hand, Type, MessageSquare, AlertCircle } from "lucide-react"
+import "react-pdf/dist/Page/TextLayer.css"
+import "react-pdf/dist/Page/AnnotationLayer.css"
+import { AlertTriangle, Loader2, Hand, Type, MessageSquare, AlertCircle, LayoutGrid, PanelLeft } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { AnnotationEvent, RealtimeAnnotation, useAnnotationsChannel } from "@/lib/annotations"
+import type { ReviewDocument } from "@/lib/data/reviews"
 import {
   Dialog,
   DialogContent,
@@ -26,6 +29,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
@@ -42,7 +46,9 @@ type PDFMarkupViewerProps = {
     pdfUrl: string
     projectId: string
   }
+  childDocuments?: ReviewDocument[]
   initialAnnotations?: RealtimeAnnotation[]
+  initialPage?: number
 }
 
 const COLORS = ["#E11D48", "#4338CA", "#047857", "#F59E0B"]
@@ -64,7 +70,7 @@ type IssueDetails = {
   dateModified: string | null
 }
 
-export function PDFMarkupViewer({ reviewId, document, initialAnnotations }: PDFMarkupViewerProps) {
+export function PDFMarkupViewer({ reviewId, document, childDocuments = [], initialAnnotations, initialPage }: PDFMarkupViewerProps) {
   const [numPages, setNumPages] = useState(0)
   const [annotations, setAnnotations] = useState<RealtimeAnnotation[]>([])
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null)
@@ -87,6 +93,31 @@ export function PDFMarkupViewer({ reviewId, document, initialAnnotations }: PDFM
   const panStartRef = useRef({ x: 0, y: 0, scrollLeft: 0, scrollTop: 0 })
   const [currentUser, setCurrentUser] = useState<{ first_name: string; last_name: string } | null>(null)
   const [placementCoords, setPlacementCoords] = useState<{ page: number; x: number; y: number } | null>(null)
+  const [scale, setScale] = useState(1.0) // This is the rendered scale (canvas size)
+  const [debouncedScale, setDebouncedScale] = useState(1.0)
+  const [zoomLevel, setZoomLevel] = useState(1.0) // This is the visual scale (instant)
+  const [pageAspectRatios, setPageAspectRatios] = useState<number[]>([])
+  const [currentPage, setCurrentPage] = useState(1)
+  const [sidebarTab, setSidebarTab] = useState<"properties" | "thumbnails">("properties")
+  const targetScrollRef = useRef<{ left: number; top: number } | null>(null)
+
+  // Apply synchronous scroll adjustment for zoom-to-pointer
+  useLayoutEffect(() => {
+    if (targetScrollRef.current && scrollRef.current) {
+      scrollRef.current.scrollLeft = targetScrollRef.current.left
+      scrollRef.current.scrollTop = targetScrollRef.current.top
+      targetScrollRef.current = null
+    }
+  }, [zoomLevel])
+
+  // Sync rendered scale with zoom level (debounced to avoid layout thrashing during zoom)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setScale(zoomLevel)
+      setDebouncedScale(zoomLevel)
+    }, 150) // Shortened for faster quality transition
+    return () => clearTimeout(timer)
+  }, [zoomLevel])
 
   const availableImportances = useMemo(() =>
     projectSettings?.importances?.length ? projectSettings.importances : DEFAULT_IMPORTANCES,
@@ -128,6 +159,12 @@ export function PDFMarkupViewer({ reviewId, document, initialAnnotations }: PDFM
     async function loadSettings() {
       try {
         const response = await fetch(`/api/projects/${encodedProjectId}/settings`)
+        const contentType = response.headers.get("content-type")
+        if (!contentType || !contentType.includes("application/json")) {
+          // Instead of crashing, we gracefully fail if Next.js hasn't compiled the route yet
+          throw new Error("API returned non-JSON response (likely still building)")
+        }
+
         const payload = await response.json()
         if (!isActive) return
 
@@ -156,6 +193,11 @@ export function PDFMarkupViewer({ reviewId, document, initialAnnotations }: PDFM
     async function loadUser() {
       try {
         const response = await fetch("/api/sidebar")
+        const contentType = response.headers.get("content-type")
+        if (!contentType || !contentType.includes("application/json")) {
+          throw new Error("API returned non-JSON response")
+        }
+        
         const payload = await response.json()
         if (payload.user) {
           setCurrentUser({
@@ -170,8 +212,87 @@ export function PDFMarkupViewer({ reviewId, document, initialAnnotations }: PDFM
     loadUser()
   }, [])
 
-  const handleDocumentLoad = ({ numPages }: { numPages: number }) => {
-    setNumPages(numPages)
+  useEffect(() => {
+    const scrollEl = scrollRef.current
+    if (!scrollEl) return
+
+    const handleWheel = (e: WheelEvent) => {
+      if (e.ctrlKey) {
+        e.preventDefault()
+        const delta = e.deltaY > 0 ? -0.1 : 0.1
+        
+        setZoomLevel((prev) => {
+          const next = Math.min(Math.max(prev + delta, 0.3), 5.0)
+          const finalNext = Math.round(next * 10) / 10
+          if (finalNext === prev) return prev
+
+          // Calculate exact zoom-to-pointer target scroll
+          const zoomFactor = finalNext / prev
+          const rect = scrollEl.getBoundingClientRect()
+          
+          const paddingX = scrollEl.clientWidth / 2
+          const paddingY = 40 // py-10 = 40px
+          
+          const mouseX = e.clientX - rect.left
+          const mouseY = e.clientY - rect.top
+          
+          // Distance from the un-padded START of the document content to the mouse
+          const contentX = mouseX + scrollEl.scrollLeft - paddingX
+          const contentY = mouseY + scrollEl.scrollTop - paddingY
+          
+          // To keep the point under the mouse exactly stationary, we add the expansion delta to scroll
+          targetScrollRef.current = {
+            left: scrollEl.scrollLeft + (contentX * (zoomFactor - 1)),
+            top: scrollEl.scrollTop + (contentY * (zoomFactor - 1))
+          }
+
+          return finalNext
+        })
+      }
+    }
+
+    scrollEl.addEventListener("wheel", handleWheel, { passive: false })
+    return () => scrollEl.removeEventListener("wheel", handleWheel)
+  }, [])
+
+  // Auto-scroll to initialPage or center initially
+  useEffect(() => {
+    if (initialPage && numPages >= initialPage && scrollRef.current) {
+      // Small delay to ensure pages are rendered
+      const timer = setTimeout(() => {
+        const pageElements = scrollRef.current?.querySelectorAll(".relative.border-b.bg-white")
+        if (pageElements && pageElements[initialPage - 1]) {
+          pageElements[initialPage - 1].scrollIntoView({ behavior: "smooth", block: "start" })
+        }
+      }, 500)
+      return () => clearTimeout(timer)
+    } else if (scrollRef.current && numPages > 0) {
+      // Initially center the document 
+      const timer = setTimeout(() => {
+        if (scrollRef.current) {
+          scrollRef.current.scrollLeft = (scrollRef.current.scrollWidth - scrollRef.current.clientWidth) / 2
+        }
+      }, 100)
+      return () => clearTimeout(timer)
+    }
+  }, [initialPage, numPages])
+
+  const handleDocumentLoad = async (pdf: { numPages: number; getPage: (n: number) => Promise<any> }) => {
+    setNumPages(pdf.numPages)
+    
+    // Fast-path: fetch the first page's actual aspect ratio
+    // This immediately eliminates white gaps without waiting for all 50+ pages to load
+    try {
+      const firstPage = await pdf.getPage(1)
+      const viewport = firstPage.getViewport({ scale: 1 })
+      const ratio = viewport.height / viewport.width
+      
+      // Pre-fill the array with the perfectly calculated ratio
+      setPageAspectRatios(Array(pdf.numPages).fill(ratio))
+    } catch (e) {
+      console.error("Failed to fetch initial aspect ratio", e)
+      setPageAspectRatios(Array(pdf.numPages).fill(1.41)) // Fallback to A4
+    }
   }
 
   const handleAddAnnotation = useCallback((event: React.MouseEvent<HTMLDivElement>, page: number) => {
@@ -479,112 +600,150 @@ export function PDFMarkupViewer({ reviewId, document, initialAnnotations }: PDFM
 
       {/* 2. Main Content Area */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Properties Sidebar */}
+        {/* Sidebar */}
         <aside className="flex w-72 flex-col border-r bg-card">
-          <div className="border-b p-4">
-            <h3 className="text-sm font-semibold">Properties</h3>
+          <div className="border-b">
+            <div className="flex">
+              <button
+                type="button"
+                onClick={() => setSidebarTab("properties")}
+                className={cn(
+                  "flex-1 flex items-center justify-center gap-1.5 px-4 py-3 text-xs font-semibold uppercase tracking-wider transition-colors border-b-2",
+                  sidebarTab === "properties"
+                    ? "border-primary text-primary"
+                    : "border-transparent text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <PanelLeft className="h-3.5 w-3.5" />
+                Properties
+              </button>
+              <button
+                type="button"
+                onClick={() => setSidebarTab("thumbnails")}
+                className={cn(
+                  "flex-1 flex items-center justify-center gap-1.5 px-4 py-3 text-xs font-semibold uppercase tracking-wider transition-colors border-b-2",
+                  sidebarTab === "thumbnails"
+                    ? "border-primary text-primary"
+                    : "border-transparent text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <LayoutGrid className="h-3.5 w-3.5" />
+                Thumbnails
+              </button>
+            </div>
           </div>
-          <div className="flex-1 overflow-auto p-4">
-            {selectedAnnotation ? (
-              <div className="space-y-4">
-                <div className="space-y-1">
-                  <p className="text-xs font-semibold text-muted-foreground">Content</p>
-                  <p className="text-sm font-medium break-words">{selectedAnnotation.content}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs font-semibold text-muted-foreground">Author</p>
-                  <p className="text-sm">{selectedAnnotation.createdBy}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs font-semibold text-muted-foreground">Created</p>
-                  <p className="text-sm">{new Date(selectedAnnotation.createdAt).toLocaleString()}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs font-semibold text-muted-foreground">Color</p>
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="inline-flex h-5 w-5 rounded-full border"
-                      style={{ backgroundColor: selectedAnnotation.color }}
-                    />
-                    <span className="text-xs text-muted-foreground">{selectedAnnotation.color}</span>
+          {sidebarTab === "properties" ? (
+            <div className="flex-1 overflow-auto p-4">
+              {selectedAnnotation ? (
+                <div className="space-y-4">
+                  <div className="space-y-1">
+                    <p className="text-xs font-semibold text-muted-foreground">Content</p>
+                    <p className="text-sm font-medium break-words">{selectedAnnotation.content}</p>
                   </div>
-                </div>
-                {selectedAnnotation.issueId && (
-                  <div className="space-y-2 rounded-md border border-border bg-muted/50 p-3 text-xs">
-                    {issueLoading ? (
-                      <p className="text-muted-foreground">Loading issue details…</p>
-                    ) : issueError ? (
-                      <p className="text-destructive">{issueError}</p>
-                    ) : issueDetails ? (
-                      <div className="space-y-3">
-                        <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Linked issue</p>
-                        <dl className="space-y-2 text-[11px]">
-                          <div className="flex items-center justify-between">
-                            <dt className="text-muted-foreground">Issue #</dt>
-                            <dd className="font-medium">{issueDetails.issueNumber ?? "Unknown"}</dd>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <dt className="text-muted-foreground">Discipline</dt>
-                            <dd className="font-medium">{issueDetails.discipline ?? "Unknown"}</dd>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <dt className="text-muted-foreground">Importance</dt>
-                            <dd className="font-medium">{issueDetails.importance ?? "Unknown"}</dd>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <dt className="text-muted-foreground">Created by</dt>
-                            <dd className="font-medium">{issueDetails.createdBy ?? "Unknown"}</dd>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <dt className="text-muted-foreground">Date created</dt>
-                            <dd className="font-medium">{formatIssueTimestamp(issueDetails.dateCreated)}</dd>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <dt className="text-muted-foreground">Last modified</dt>
-                            <dd className="font-medium">{formatIssueTimestamp(issueDetails.dateModified)}</dd>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <dt className="text-muted-foreground">Status</dt>
-                            <dd className="font-medium">{issueDetails.status ?? "Unknown"}</dd>
-                          </div>
-                        </dl>
-                      </div>
-                    ) : (
-                      <p className="text-muted-foreground">Issue data not available.</p>
+                  <div className="space-y-1">
+                    <p className="text-xs font-semibold text-muted-foreground">Author</p>
+                    <p className="text-sm">{selectedAnnotation.createdBy}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs font-semibold text-muted-foreground">Created</p>
+                    <p className="text-sm">{new Date(selectedAnnotation.createdAt).toLocaleString()}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs font-semibold text-muted-foreground">Color</p>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="inline-flex h-5 w-5 rounded-full border"
+                        style={{ backgroundColor: selectedAnnotation.color }}
+                      />
+                      <span className="text-xs text-muted-foreground">{selectedAnnotation.color}</span>
+                    </div>
+                  </div>
+                  {selectedAnnotation.issueId && (
+                    <div className="space-y-2 rounded-md border border-border bg-muted/50 p-3 text-xs">
+                      {issueLoading ? (
+                        <p className="text-muted-foreground">Loading issue details…</p>
+                      ) : issueError ? (
+                        <p className="text-destructive">{issueError}</p>
+                      ) : issueDetails ? (
+                        <div className="space-y-3">
+                          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Linked issue</p>
+                          <dl className="space-y-2 text-[11px]">
+                            <div className="flex items-center justify-between">
+                              <dt className="text-muted-foreground">Issue #</dt>
+                              <dd className="font-medium">{issueDetails.issueNumber ?? "Unknown"}</dd>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <dt className="text-muted-foreground">Discipline</dt>
+                              <dd className="font-medium">{issueDetails.discipline ?? "Unknown"}</dd>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <dt className="text-muted-foreground">Importance</dt>
+                              <dd className="font-medium">{issueDetails.importance ?? "Unknown"}</dd>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <dt className="text-muted-foreground">Created by</dt>
+                              <dd className="font-medium">{issueDetails.createdBy ?? "Unknown"}</dd>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <dt className="text-muted-foreground">Date created</dt>
+                              <dd className="font-medium">{formatIssueTimestamp(issueDetails.dateCreated)}</dd>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <dt className="text-muted-foreground">Last modified</dt>
+                              <dd className="font-medium">{formatIssueTimestamp(issueDetails.dateModified)}</dd>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <dt className="text-muted-foreground">Status</dt>
+                              <dd className="font-medium">{issueDetails.status ?? "Unknown"}</dd>
+                            </div>
+                          </dl>
+                        </div>
+                      ) : (
+                        <p className="text-muted-foreground">Issue data not available.</p>
+                      )}
+                    </div>
+                  )}
+                  <div className="space-y-2">
+                    <Button
+                      variant="secondary"
+                      className="w-full"
+                      onClick={handleOpenConvertDialog}
+                      disabled={Boolean(selectedAnnotation.issueId)}
+                    >
+                      {selectedAnnotation.issueId ? "Annotation already linked" : "Convert to issue"}
+                    </Button>
+                    {selectedAnnotation.issueId && (
+                      <p className="text-xs text-muted-foreground">This annotation is already linked to an issue.</p>
+                    )}
+                    {settingsError && (
+                      <p className="text-xs text-destructive">{settingsError}</p>
                     )}
                   </div>
-                )}
-                <div className="space-y-2">
                   <Button
-                    variant="secondary"
-                    className="w-full"
-                    onClick={handleOpenConvertDialog}
-                    disabled={Boolean(selectedAnnotation.issueId)}
+                    variant="outline"
+                    className="w-full text-destructive hover:bg-destructive hover:text-destructive-foreground"
+                    onClick={() => handleDeleteAnnotation(selectedAnnotation.id)}
                   >
-                    {selectedAnnotation.issueId ? "Annotation already linked" : "Convert to issue"}
+                    Delete Markup
                   </Button>
-                  {selectedAnnotation.issueId && (
-                    <p className="text-xs text-muted-foreground">This annotation is already linked to an issue.</p>
-                  )}
-                  {settingsError && (
-                    <p className="text-xs text-destructive">{settingsError}</p>
-                  )}
                 </div>
-                <Button
-                  variant="outline"
-                  className="w-full text-destructive hover:bg-destructive hover:text-destructive-foreground"
-                  onClick={() => handleDeleteAnnotation(selectedAnnotation.id)}
-                >
-                  Delete Markup
-                </Button>
-              </div>
-            ) : (
-              <div className="flex h-full flex-col items-center justify-center text-center text-sm text-muted-foreground">
-                <p>No markup selected</p>
-                <p className="text-xs">Select a markup to view details.</p>
-              </div>
-            )}
-          </div>
+              ) : (
+                <div className="flex h-full flex-col items-center justify-center text-center text-sm text-muted-foreground">
+                  <p>No markup selected</p>
+                  <p className="text-xs">Select a markup to view details.</p>
+                </div>
+              )}
+            </div>
+          ) : (
+            <ThumbnailsPanel
+              numPages={numPages}
+              currentPage={currentPage}
+              childDocuments={childDocuments}
+              parentDocumentCode={document.code}
+              pdfUrl={document.pdfUrl}
+              scrollRef={scrollRef}
+            />
+          )}
         </aside>
 
         {/* PDF Scroll Container */}
@@ -596,7 +755,7 @@ export function PDFMarkupViewer({ reviewId, document, initialAnnotations }: PDFM
             isPanning && "cursor-grabbing select-none"
           )}
           onMouseDown={(e) => {
-            if (activeTool !== "pan") return
+            if (activeTool !== "pan" && e.button !== 1) return
             setIsPanning(true)
             panStartRef.current = {
               x: e.clientX,
@@ -615,31 +774,60 @@ export function PDFMarkupViewer({ reviewId, document, initialAnnotations }: PDFM
           onMouseUp={() => setIsPanning(false)}
           onMouseLeave={() => setIsPanning(false)}
         >
-          <Document file={document.pdfUrl} onLoadSuccess={handleDocumentLoad} loading={renderLoading(containerRef.current)}>
-            {Array.from({ length: numPages }, (_, index) => (
-              <div key={`page_${index + 1}`} className="relative flex justify-center border-b bg-white">
-                <Page
+          <div className="w-max px-[50%] py-10">
+            <Document file={document.pdfUrl} onLoadSuccess={handleDocumentLoad} loading={renderLoading(containerRef.current)}>
+              {Array.from({ length: numPages }, (_, index) => (
+                <VirtualizedPage
+                  key={`page_${index + 1}`}
                   pageNumber={index + 1}
-                  width={900}
-                  renderAnnotationLayer={false}
-                  renderTextLayer={false}
-                  className="select-none"
-                />
-                <AnnotationLayer
-                  pageNumber={index + 1}
+                  scale={scale}
+                  debouncedScale={debouncedScale}
                   annotations={annotations}
                   activeTool={activeTool}
+                  scrollRef={scrollRef}
+                  aspectRatio={pageAspectRatios[index]}
                   onAddAnnotation={handleAddAnnotation}
                   onDeleteAnnotation={handleDeleteAnnotation}
                   onSelectAnnotation={setSelectedAnnotationId}
+                  onVisible={setCurrentPage}
+                  zoomLevel={zoomLevel}
                 />
-              </div>
-            ))}
-          </Document>
+              ))}
+            </Document>
+          </div>
+        </div>
+      </div>
+      {/* 3. Bottom Bar */}
+      <div className="flex items-center justify-between border-t bg-muted/30 px-4 py-2 text-[11px] text-muted-foreground">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <span className="font-semibold text-foreground uppercase tracking-tight">Document</span>
+            <code className="rounded bg-background border px-1.5 py-0.5 font-mono text-primary shadow-sm">
+              {childDocuments.find(d => d.pageNumber === currentPage)?.documentCode || document.code}
+            </code>
+            <span className="text-muted-foreground/60">|</span>
+            <span>{childDocuments.find(d => d.pageNumber === currentPage)?.documentName || document.name}</span>
+          </div>
+          <Separator orientation="vertical" className="h-4" />
+          <div className="flex items-center gap-2">
+            <span className="font-semibold text-foreground uppercase tracking-tight">Page</span>
+            <span className="font-mono text-primary">{currentPage} / {numPages}</span>
+          </div>
+        </div>
+        <div className="flex items-center gap-6">
+          <div className="flex items-center gap-1.5">
+            <div className="h-1.5 w-1.5 rounded-full bg-green-500" />
+            <span>Connected</span>
+          </div>
+          <Separator orientation="vertical" className="h-4" />
+          <div className="flex items-center gap-2">
+            <span className="font-semibold text-foreground uppercase tracking-tight">Zoom</span>
+            <span className="font-mono text-primary w-12 text-right">{Math.round(zoomLevel * 100)}%</span>
+          </div>
         </div>
       </div>
 
-      {/* 3. Convert Dialog */}
+      {/* 4. Convert Dialog */}
       <Dialog open={convertDialogOpen} onOpenChange={handleConvertDialogChange}>
         <DialogContent className="sm:max-w-[425px]">
           <form onSubmit={handleConvertToIssue} className="space-y-6">
@@ -729,6 +917,252 @@ export function PDFMarkupViewer({ reviewId, document, initialAnnotations }: PDFM
         </DialogContent>
       </Dialog>
       <div id="annotation-popovers" />
+    </div>
+  )
+}
+
+function VirtualizedPage({
+  pageNumber,
+  scale,
+  debouncedScale,
+  annotations,
+  activeTool,
+  scrollRef,
+  aspectRatio,
+  onAddAnnotation,
+  onDeleteAnnotation,
+  onSelectAnnotation,
+  onVisible,
+  zoomLevel,
+}: {
+  pageNumber: number
+  scale: number
+  debouncedScale: number
+  annotations: RealtimeAnnotation[]
+  activeTool: "pan" | "issue"
+  scrollRef: React.RefObject<HTMLDivElement | null>
+  aspectRatio: number
+  onAddAnnotation: (event: React.MouseEvent<HTMLDivElement>, page: number) => void
+  onDeleteAnnotation: (id: string) => void
+  onSelectAnnotation: (id: string | null) => void
+  onVisible: (page: number) => void
+  zoomLevel: number
+}) {
+  const [isVisible, setIsVisible] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  // Observer 1: Controls rendering — wide margin to pre-load pages before they scroll into view
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setIsVisible(entry.isIntersecting)
+      },
+      {
+        root: scrollRef.current,
+        threshold: 0.1,
+        rootMargin: "800px",
+      }
+    )
+
+    if (containerRef.current) {
+      observer.observe(containerRef.current)
+    }
+
+    return () => observer.disconnect()
+  }, [scrollRef, pageNumber])
+
+  // Observer 2: Tracks "current page" — tight margin that only fires when a page
+  // crosses the center 10% strip of the viewport, so exactly one page owns the indicator.
+  useEffect(() => {
+    const pageObserver = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          onVisible(pageNumber)
+        }
+      },
+      {
+        root: scrollRef.current,
+        threshold: 0,
+        rootMargin: "-45% 0px -45% 0px",
+      }
+    )
+
+    if (containerRef.current) {
+      pageObserver.observe(containerRef.current)
+    }
+
+    return () => pageObserver.disconnect()
+  }, [scrollRef, onVisible, pageNumber])
+
+  const calculatedHeight = 900 * zoomLevel * (aspectRatio || 1.41)
+
+  return (
+    <div
+      ref={containerRef}
+      className={cn(
+        "relative border-b bg-white",
+        !isVisible && "bg-muted/5"
+      )}
+      style={{
+        width: 900 * zoomLevel,
+        minHeight: calculatedHeight,
+      }}
+    >
+      {isVisible ? (
+        <>
+          <div
+            className="absolute inset-0 origin-top-left"
+            style={{ transform: `scale(${(900 * zoomLevel) / 2000})` }}
+          >
+            <Page
+              pageNumber={pageNumber}
+              width={2000} // Static high-res render completely prevents react-pdf scale-flashes!
+              renderAnnotationLayer={false}
+              renderTextLayer={true} // Enabled for crisp vector text
+              devicePixelRatio={Math.max(2, window.devicePixelRatio)} // High DPI rendering
+              className="select-none"
+              onRenderTextLayerError={(error: any) => {
+                if (error.name !== "AbortException") console.error("TextLayer error:", error)
+              }}
+              onGetTextError={(error: any) => {
+                if (error.name !== "AbortException") console.error("GetText error:", error)
+              }}
+              loading={
+                <div
+                  style={{ width: 2000, height: 2000 * (aspectRatio || 1.41) }}
+                  className="flex items-center justify-center bg-white"
+                >
+                  <Loader2 className="h-20 w-20 animate-spin text-muted-foreground/20" />
+                </div>
+              }
+            />
+          </div>
+          <AnnotationLayer
+            pageNumber={pageNumber}
+            annotations={annotations}
+            activeTool={activeTool}
+            onAddAnnotation={onAddAnnotation}
+            onDeleteAnnotation={onDeleteAnnotation}
+            onSelectAnnotation={onSelectAnnotation}
+          />
+        </>
+      ) : (
+        <div style={{ width: 900 * scale, height: calculatedHeight }} className="flex items-center justify-center">
+          <span className="text-xs text-muted-foreground/20">Page {pageNumber}</span>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ThumbnailsPanel({
+  numPages,
+  currentPage,
+  childDocuments,
+  parentDocumentCode,
+  pdfUrl,
+  scrollRef,
+}: {
+  numPages: number
+  currentPage: number
+  childDocuments: ReviewDocument[]
+  parentDocumentCode: string
+  pdfUrl: string
+  scrollRef: React.RefObject<HTMLDivElement | null>
+}) {
+  const thumbnailListRef = useRef<HTMLDivElement>(null)
+
+  const scrollToPage = useCallback((pageNumber: number) => {
+    if (!scrollRef.current) return
+    const pageElements = scrollRef.current.querySelectorAll(".relative.border-b.bg-white")
+    if (pageElements && pageElements[pageNumber - 1]) {
+      pageElements[pageNumber - 1].scrollIntoView({ behavior: "smooth", block: "start" })
+    }
+  }, [scrollRef])
+
+  // Auto-scroll the thumbnail list to keep current page visible
+  useEffect(() => {
+    if (!thumbnailListRef.current) return
+    const activeThumb = thumbnailListRef.current.querySelector(`[data-thumb-page="${currentPage}"]`)
+    if (activeThumb) {
+      activeThumb.scrollIntoView({ behavior: "smooth", block: "nearest" })
+    }
+  }, [currentPage])
+
+  if (numPages === 0) {
+    return (
+      <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
+        Loading pages…
+      </div>
+    )
+  }
+
+  return (
+    <div ref={thumbnailListRef} className="flex-1 overflow-auto p-3">
+      <Document file={pdfUrl} loading={null}>
+        <div className="space-y-3">
+          {Array.from({ length: numPages }, (_, index) => {
+            const pageNum = index + 1
+            const isActive = currentPage === pageNum
+            const childDoc = childDocuments.find(d => d.pageNumber === pageNum)
+            const docCode = childDoc?.documentCode || parentDocumentCode
+            const docName = childDoc?.documentName
+
+            return (
+              <button
+                key={pageNum}
+                type="button"
+                data-thumb-page={pageNum}
+                onClick={() => scrollToPage(pageNum)}
+                className={cn(
+                  "group w-full rounded-lg border-2 bg-white p-1 transition-all hover:shadow-md",
+                  isActive
+                    ? "border-primary ring-2 ring-primary/20 shadow-sm"
+                    : "border-border hover:border-primary/40"
+                )}
+              >
+                <div className="relative overflow-hidden rounded">
+                  <Page
+                    pageNumber={pageNum}
+                    width={200}
+                    renderAnnotationLayer={false}
+                    renderTextLayer={false}
+                    loading={
+                      <div className="flex items-center justify-center bg-muted/20" style={{ width: 200, height: 140 }}>
+                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground/40" />
+                      </div>
+                    }
+                  />
+                  {/* Page number badge */}
+                  <div className={cn(
+                    "absolute top-1.5 left-1.5 rounded px-1.5 py-0.5 text-[10px] font-bold shadow-sm",
+                    isActive
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-background/90 text-muted-foreground"
+                  )}>
+                    {pageNum}
+                  </div>
+                </div>
+                <div className="mt-1.5 px-1 pb-0.5 text-left">
+                  {docCode && (
+                    <code className={cn(
+                      "block truncate font-mono text-[10px] font-semibold",
+                      isActive ? "text-primary" : "text-foreground"
+                    )}>
+                      {docCode}
+                    </code>
+                  )}
+                  {docName && (
+                    <span className="block truncate text-[10px] text-muted-foreground mt-0.5">
+                      {docName}
+                    </span>
+                  )}
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      </Document>
     </div>
   )
 }

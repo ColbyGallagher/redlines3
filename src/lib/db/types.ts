@@ -1,3 +1,29 @@
+export type ExtractionArea = {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export type ExtractionSettings = {
+  documentCode?: ExtractionArea
+  documentName?: ExtractionArea
+  revision?: ExtractionArea
+}
+
+export type ExtractionSetup = {
+  id: string
+  name: string
+  settings: ExtractionSettings
+}
+
+export type ProjectSettings = {
+  importances?: string[] | null
+  disciplines?: string[] | null
+  extraction_settings?: ExtractionSettings | null
+  extraction_setups?: ExtractionSetup[] | null
+}
+
 type GenericRelationship = {
   foreignKeyName: string
   columns: string[]
@@ -17,7 +43,7 @@ export type Project = {
   contract_type: string | null
   company_id: string | null
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  settings: any | null
+  settings: ProjectSettings | null
   created_at?: string | null
   updated_at?: string | null
 }
@@ -49,6 +75,8 @@ export type Document = {
   pdf_url: string | null
   review_id: string
   project_id: string
+  parent_id?: string | null
+  page_number?: number | null
   file_size?: string | null
   uploaded_at?: string | null
   created_at?: string | null

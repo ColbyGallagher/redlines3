@@ -19,6 +19,10 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog"
 
+import { ExtractionSetup, ExtractionSettings } from "@/lib/db/types"
+import { ExtractionCalibrationDialog } from "@/components/reviews/extraction-calibration-dialog"
+import { Trash2, Edit2, Plus, FileUp } from "lucide-react"
+
 type Milestone = {
     name: string
     description?: string
@@ -37,6 +41,8 @@ type ProjectSettings = {
     suitabilities: string[]
     defaultReviewTimes: { stage: string; days: number }[]
     defaultResponsePeriods: { role: string; days: number }[]
+    extraction_settings?: ExtractionSettings | null
+    extraction_setups?: ExtractionSetup[] | null
 }
 
 type ProjectSettingsResponse = {
@@ -57,6 +63,7 @@ type SettingsFormState = {
     defaultResponsePeriods: { role: string; days: number }[]
     titleblockTemplateUrl?: string
     titleblockFile?: File | null
+    extraction_setups: ExtractionSetup[]
 }
 
 function createInitialFormState(settings: ProjectSettings): SettingsFormState {
@@ -74,6 +81,7 @@ function createInitialFormState(settings: ProjectSettings): SettingsFormState {
         defaultResponsePeriods: settings.defaultResponsePeriods.map((entry) => ({ ...entry })),
         titleblockTemplateUrl: settings.titleblockTemplateUrl,
         titleblockFile: null,
+        extraction_setups: settings.extraction_setups ? [...settings.extraction_setups] : [],
     }
 }
 
@@ -86,6 +94,14 @@ export function ProjectSettingsForm({ projectId }: ProjectSettingsFormProps) {
     const [settings, setSettings] = React.useState<ProjectSettings | null>(null)
     const [formState, setFormState] = React.useState<SettingsFormState | null>(null)
     const [isSaving, setIsSaving] = React.useState(false)
+    
+    // Extraction setups management
+    const [isCalibrationOpen, setIsCalibrationOpen] = React.useState(false)
+    const [setupToEdit, setSetupToEdit] = React.useState<{ index: number; setup: ExtractionSetup } | null>(null)
+    const [isSamplePdfDialogOpen, setIsSamplePdfDialogOpen] = React.useState(false)
+    const [samplePdfUrl, setSamplePdfUrl] = React.useState<string | null>(null)
+    const [isDeletingSetup, setIsDeletingSetup] = React.useState<number | null>(null)
+
     const [milestoneToEdit, setMilestoneToEdit] = React.useState<{ index: number; milestone: Milestone } | null>(null)
     const [isMilestoneDialogOpen, setIsMilestoneDialogOpen] = React.useState(false)
     const [isSavingMilestone, setIsSavingMilestone] = React.useState(false)
@@ -161,6 +177,14 @@ export function ProjectSettingsForm({ projectId }: ProjectSettingsFormProps) {
             )
         }
 
+        const isExtractionSetupsEqual = () => {
+            if (formState.extraction_setups.length !== (settings.extraction_setups?.length || 0)) return false
+            return formState.extraction_setups.every((s, i) => {
+                const other = settings.extraction_setups![i]
+                return s.id === other.id && s.name === other.name && JSON.stringify(s.settings) === JSON.stringify(other.settings)
+            })
+        }
+
         return (
             formState.documentNamingConvention !== settings.documentNamingConvention ||
             formState.documentCodeLocation !== settings.documentCodeLocation ||
@@ -174,7 +198,8 @@ export function ProjectSettingsForm({ projectId }: ProjectSettingsFormProps) {
             !compareArrays(formState.states, settings.states) ||
             !compareArrays(formState.suitabilities, settings.suitabilities) ||
             !isReviewTimesEqual() ||
-            !isResponsePeriodsEqual()
+            !isResponsePeriodsEqual() ||
+            !isExtractionSetupsEqual()
         )
     }, [settings, formState])
 
@@ -357,6 +382,69 @@ export function ProjectSettingsForm({ projectId }: ProjectSettingsFormProps) {
         }
     }, [formState, milestoneToEdit, projectId])
 
+    const handleAddSetup = React.useCallback(() => {
+        setSetupToEdit(null)
+        setIsSamplePdfDialogOpen(true)
+    }, [])
+
+    const handleEditSetup = React.useCallback((index: number, setup: ExtractionSetup) => {
+        // For editing, we need a PDF URL. In a real app, we might store the sample PDF URL used during calibration,
+        // or just ask for a new sample. For now, let's ask for a sample even for editing to keep it simple,
+        // OR if the project already has documents, we could use the first document.
+        // Let's stick to asking for a sample PDF for simplicity of the workflow.
+        setSetupToEdit({ index, setup: { ...setup } })
+        setIsSamplePdfDialogOpen(true)
+    }, [])
+
+    const handleRemoveSetup = React.useCallback((index: number) => {
+        setFormState(prev => {
+            if (!prev) return prev
+            const nextSetups = [...prev.extraction_setups]
+            nextSetups.splice(index, 1)
+            return { ...prev, extraction_setups: nextSetups }
+        })
+    }, [])
+
+    const handleCalibrationSave = React.useCallback((setupData: { name: string; settings: ExtractionSettings }) => {
+        setFormState(prev => {
+            if (!prev) return prev
+            const nextSetups = [...prev.extraction_setups]
+            
+            if (setupToEdit && setupToEdit.index !== -1) {
+                // Update existing
+                nextSetups[setupToEdit.index] = {
+                    ...nextSetups[setupToEdit.index],
+                    name: setupData.name,
+                    settings: setupData.settings
+                }
+            } else {
+                // Add new
+                nextSetups.push({
+                    id: Math.random().toString(36).substring(2, 9),
+                    name: setupData.name,
+                    settings: setupData.settings
+                })
+            }
+            
+            return { ...prev, extraction_setups: nextSetups }
+        })
+        setIsCalibrationOpen(false)
+        setSamplePdfUrl(null)
+        setSetupToEdit(null)
+    }, [setupToEdit])
+
+    const handleSamplePdfChange = React.useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0]
+        if (!file) return
+
+        // In a real app, you'd upload this to storage and get a public URL.
+        // For the purpose of calibration in the UI, we can use a local object URL.
+        const url = URL.createObjectURL(file)
+        setSamplePdfUrl(url)
+        setIsSamplePdfDialogOpen(false)
+        setIsCalibrationOpen(true)
+    }, [])
+
     const handleTitleblockChange = React.useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0]
         setFormState((prev) => (prev ? { ...prev, titleblockFile: file ?? null } : prev))
@@ -500,6 +588,7 @@ export function ProjectSettingsForm({ projectId }: ProjectSettingsFormProps) {
                         defaultReviewTimes: formState.defaultReviewTimes,
                         defaultResponsePeriods: formState.defaultResponsePeriods,
                         titleblockTemplateUrl: formState.titleblockTemplateUrl,
+                        extraction_setups: formState.extraction_setups,
                     },
                 }),
             })
@@ -519,6 +608,8 @@ export function ProjectSettingsForm({ projectId }: ProjectSettingsFormProps) {
                     defaultReviewTimes: formState.defaultReviewTimes.map(t => ({ ...t })),
                     defaultResponsePeriods: formState.defaultResponsePeriods.map(p => ({ ...p })),
                     titleblockTemplateUrl: formState.titleblockTemplateUrl,
+                    extraction_settings: settings?.extraction_settings ? { ...settings.extraction_settings } : {},
+                    extraction_setups: [...formState.extraction_setups],
                 }
                 setSettings(updatedSettings)
                 return true
@@ -607,6 +698,58 @@ export function ProjectSettingsForm({ projectId }: ProjectSettingsFormProps) {
                                     <Button type="button" variant="outline" className="w-full" onClick={handleAddMilestone}>
                                         Add milestone
                                     </Button>
+                                </div>
+                            </section>
+
+                            <Separator />
+
+                            <section className="space-y-4">
+                                <header className="flex flex-wrap items-center justify-between gap-2">
+                                    <div>
+                                        <h2 className="text-lg font-semibold">PDF Extraction Management</h2>
+                                        <p className="text-muted-foreground text-sm">
+                                            Manage coordinate-based extraction setups for different document types.
+                                        </p>
+                                    </div>
+                                    <Button type="button" variant="outline" size="sm" onClick={handleAddSetup}>
+                                        <Plus className="size-4 mr-2" />
+                                        Add Setup
+                                    </Button>
+                                </header>
+                                <div className="grid gap-3">
+                                    {formState.extraction_setups.length ? (
+                                        formState.extraction_setups.map((setup, index) => (
+                                            <div
+                                                key={setup.id}
+                                                className="border-border hover:border-primary/50 flex items-center justify-between gap-3 rounded-lg border bg-card p-4 transition"
+                                            >
+                                                <div className="flex items-center gap-3">
+                                                    <div className="size-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                                                        <FileUp className="size-4 text-primary" />
+                                                    </div>
+                                                    <div>
+                                                        <h3 className="font-medium text-sm">{setup.name}</h3>
+                                                        <p className="text-muted-foreground text-xs">
+                                                            Fields: {setup.settings ? Object.keys(setup.settings).length : 0} calibrated
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                                <div className="flex gap-2">
+                                                    <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEditSetup(index, setup)}>
+                                                        <Edit2 className="size-4" />
+                                                    </Button>
+                                                    <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => handleRemoveSetup(index)}>
+                                                        <Trash2 className="size-4" />
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        ))
+                                    ) : (
+                                        <div className="border border-dashed rounded-lg p-8 flex flex-col items-center justify-center text-center space-y-2">
+                                            <p className="text-muted-foreground text-sm">No extraction setups defined.</p>
+                                            <Button type="button" variant="link" onClick={handleAddSetup}>Create your first setup</Button>
+                                        </div>
+                                    )}
                                 </div>
                             </section>
 
@@ -796,6 +939,22 @@ export function ProjectSettingsForm({ projectId }: ProjectSettingsFormProps) {
                     }
                 }}
             />
+            <SamplePdfDialog
+                open={isSamplePdfDialogOpen}
+                onOpenChange={setIsSamplePdfDialogOpen}
+                onFileChange={handleSamplePdfChange}
+            />
+            {samplePdfUrl && (
+                <ExtractionCalibrationDialog
+                    open={isCalibrationOpen}
+                    onOpenChange={setIsCalibrationOpen}
+                    pdfUrl={samplePdfUrl}
+                    projectId={projectId}
+                    onSave={handleCalibrationSave}
+                    initialSettings={setupToEdit?.setup.settings}
+                    initialName={setupToEdit?.setup.name}
+                />
+            )}
         </div >
     )
 }
@@ -1026,6 +1185,32 @@ function UnsavedChangesDialog({ open, onOpenChange, onDiscard, onSave }: Unsaved
                     <Button type="button" onClick={onSave}>
                         Save changes
                     </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    )
+}
+function SamplePdfDialog({ open, onOpenChange, onFileChange }: { open: boolean; onOpenChange: (open: boolean) => void; onFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void }) {
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                    <DialogTitle>Upload Sample PDF</DialogTitle>
+                    <DialogDescription>
+                        To calibrate extraction, please upload a sample PDF that matches the layout you want to extract from.
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="flex items-center justify-center p-8 border-2 border-dashed rounded-lg">
+                    <label className="flex flex-col items-center gap-2 cursor-pointer group">
+                        <div className="size-12 rounded-full bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
+                            <FileUp className="size-6 text-primary" />
+                        </div>
+                        <span className="text-sm font-medium">Click to select PDF</span>
+                        <input type="file" accept="application/pdf" className="hidden" onChange={onFileChange} />
+                    </label>
+                </div>
+                <DialogFooter>
+                    <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>

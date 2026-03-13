@@ -94,6 +94,8 @@ export async function GET() {
       id: review.id,
       name: review.reviewName,
       href: `/reviews/${review.id}`,
+      projectId: review.project?.id ?? null,
+      projectName: review.project?.name ?? "Untitled project",
     }))
 
     return NextResponse.json({
