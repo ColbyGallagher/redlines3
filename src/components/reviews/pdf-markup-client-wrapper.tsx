@@ -1,9 +1,10 @@
 "use client"
 
+import * as React from "react"
 import dynamic from "next/dynamic"
 import { Loader2 } from "lucide-react"
 
-export const PDFMarkupViewerClient = dynamic(
+const PDFMarkupViewer = dynamic(
     () => import("./pdf-markup-viewer").then((mod) => mod.PDFMarkupViewer),
     {
         ssr: false,
@@ -17,3 +18,17 @@ export const PDFMarkupViewerClient = dynamic(
         )
     }
 )
+
+export function PDFMarkupViewerClient(props: React.ComponentProps<typeof PDFMarkupViewer>) {
+    React.useEffect(() => {
+        // Lock the global body scroll so that ONLY the PDF container scrolls
+        const originalOverflow = document.body.style.overflow
+        document.body.style.overflow = "hidden"
+
+        return () => {
+            document.body.style.overflow = originalOverflow
+        }
+    }, [])
+
+    return <PDFMarkupViewer {...props} />
+}

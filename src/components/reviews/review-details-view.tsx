@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useEffect, useMemo, useState } from "react"
+import React, { useEffect, useMemo, useState, useCallback, useRef } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Calendar, Clock, Download, FileText, MapPin, Trash2, Users, ChevronRight, ChevronDown, Layers } from "lucide-react"
@@ -61,6 +61,16 @@ const importanceBadgeVariant: Record<string, "default" | "secondary" | "destruct
   Low: "secondary",
 }
 
+function formatFileSize(size: number | string | undefined | null) {
+  if (size === undefined || size === null) return "0 KB"
+  const bytes = typeof size === "string" ? parseInt(size, 10) : size
+  if (isNaN(bytes)) return "0 KB"
+  if (bytes >= 1048576) {
+    return (bytes / 1048576).toFixed(1) + " MB"
+  }
+  return Math.round(bytes / 1024) + " KB"
+}
+
 export function ReviewDetailsView({ review }: ReviewDetailsViewProps) {
   const router = useRouter()
   const statusBadge = statusVariantMap[review.status]
@@ -73,6 +83,54 @@ export function ReviewDetailsView({ review }: ReviewDetailsViewProps) {
   const [bulkDeleteIncludeIssues, setBulkDeleteIncludeIssues] = useState(false)
   const [isDeletingSelection, setIsDeletingSelection] = useState(false)
   const [expandedParents, setExpandedParents] = useState<string[]>([])
+  
+  // Resizable columns state
+  const [columnWidths, setColumnWidths] = useState({
+    selection: 40,
+    name: 300,
+    code: 150,
+    state: 100,
+    milestone: 120,
+    suitability: 100,
+    version: 80,
+    revision: 80,
+    issues: 80,
+    fileSize: 100,
+    uploaded: 150,
+    actions: 250
+  })
+
+  const isResizing = useRef<string | null>(null)
+  const startX = useRef<number>(0)
+  const startWidth = useRef<number>(0)
+
+  const handleMouseDown = (e: React.MouseEvent, column: keyof typeof columnWidths) => {
+    isResizing.current = column
+    startX.current = e.pageX
+    startWidth.current = columnWidths[column]
+    document.addEventListener("mousemove", handleMouseMove)
+    document.addEventListener("mouseup", handleMouseUp)
+    document.body.style.cursor = "col-resize"
+    e.preventDefault()
+  }
+
+  const handleMouseMove = useCallback((e: MouseEvent) => {
+    if (!isResizing.current) return
+    const diff = e.pageX - startX.current
+    const newWidth = Math.max(50, startWidth.current + diff)
+    
+    setColumnWidths(prev => ({
+      ...prev,
+      [isResizing.current as string]: newWidth
+    }))
+  }, [])
+
+  const handleMouseUp = useCallback(() => {
+    isResizing.current = null
+    document.removeEventListener("mousemove", handleMouseMove)
+    document.removeEventListener("mouseup", handleMouseUp)
+    document.body.style.cursor = "default"
+  }, [handleMouseMove])
 
   const handleDeleteDocument = async () => {
     if (!selectedDocument) return
@@ -427,27 +485,44 @@ export function ReviewDetailsView({ review }: ReviewDetailsViewProps) {
               </div>
             </div>
           )}
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-12 px-2">
-                  <Checkbox
-                    checked={
-                      review.documents.length > 0 && selectedDocumentIds.length === review.documents.length
-                        ? true
-                        : selectedDocumentIds.length > 0
-                          ? "indeterminate"
-                          : false
-                    }
-                    onCheckedChange={(checked) => handleSelectAllDocuments(checked)}
-                    aria-label="Select all documents"
-                  />
-                </TableHead>
-                {documentColumns.map((column) => (
-                  <TableHead key={column.id}>{column.label}</TableHead>
-                ))}
-              </TableRow>
-            </TableHeader>
+          <div className="overflow-x-auto">
+            <Table style={{ tableLayout: "fixed", width: "100%" }}>
+              <TableHeader>
+                <TableRow>
+                  <TableHead style={{ width: columnWidths.selection }} className="px-2 relative group">
+                    <Checkbox
+                      checked={
+                        review.documents.length > 0 && selectedDocumentIds.length === review.documents.length
+                          ? true
+                          : selectedDocumentIds.length > 0
+                            ? "indeterminate"
+                            : false
+                      }
+                      onCheckedChange={(checked) => handleSelectAllDocuments(checked)}
+                      aria-label="Select all documents"
+                    />
+                    <div 
+                        onMouseDown={(e) => handleMouseDown(e, "selection")}
+                        className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-primary/50 group-hover:bg-primary/20 transition-colors"
+                    />
+                  </TableHead>
+                  {documentColumns.map((column) => (
+                    <TableHead 
+                      key={column.id} 
+                      style={{ width: columnWidths[column.id as keyof typeof columnWidths] }}
+                      className="relative group"
+                    >
+                      {column.label}
+                      {column.id !== "actions" && (
+                        <div 
+                           onMouseDown={(e) => handleMouseDown(e, column.id as keyof typeof columnWidths)}
+                           className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-primary/50 group-hover:bg-primary/20 transition-colors"
+                        />
+                      )}
+                    </TableHead>
+                  ))}
+                </TableRow>
+              </TableHeader>
             <TableBody>
               {review.documents
                 .filter(doc => !doc.parentId) // Only show top-level documents initially
@@ -459,14 +534,14 @@ export function ReviewDetailsView({ review }: ReviewDetailsViewProps) {
                   return (
                     <React.Fragment key={document.id}>
                       <TableRow className={cn(hasChildren && "bg-muted/10 font-medium")}>
-                        <TableCell className="px-2">
+                        <TableCell style={{ width: columnWidths.selection }} className="px-2">
                           <Checkbox
                             checked={selectedDocumentIds.includes(document.id)}
                             onCheckedChange={(checked) => toggleDocumentSelection(document.id)}
                             aria-label={`Select ${document.documentName}`}
                           />
                         </TableCell>
-                        <TableCell className="font-medium">
+                        <TableCell style={{ width: columnWidths.name }} className="font-medium">
                           <div className="flex items-center gap-2">
                             {hasChildren && (
                               <Button 
@@ -494,21 +569,21 @@ export function ReviewDetailsView({ review }: ReviewDetailsViewProps) {
                             )}
                           </div>
                         </TableCell>
-                        <TableCell>{document.documentCode}</TableCell>
-                        <TableCell>{document.state}</TableCell>
-                        <TableCell>{document.milestone}</TableCell>
-                        <TableCell>{document.suitability}</TableCell>
-                        <TableCell>{document.version}</TableCell>
-                        <TableCell>{document.revision}</TableCell>
-                        <TableCell>
+                        <TableCell style={{ width: columnWidths.code }} className="truncate">{document.documentCode}</TableCell>
+                        <TableCell style={{ width: columnWidths.state }} className="truncate">{document.state}</TableCell>
+                        <TableCell style={{ width: columnWidths.milestone }} className="truncate">{document.milestone}</TableCell>
+                        <TableCell style={{ width: columnWidths.suitability }} className="truncate">{document.suitability}</TableCell>
+                        <TableCell style={{ width: columnWidths.version }} className="truncate">{document.version}</TableCell>
+                        <TableCell style={{ width: columnWidths.revision }} className="truncate">{document.revision}</TableCell>
+                          <TableCell style={{ width: columnWidths.issues }} className="truncate">
                             {hasChildren 
                                 ? children.reduce((acc, child) => acc + (issuesPerDocument[child.id] ?? 0), 0) + (issuesPerDocument[document.id] ?? 0)
                                 : issuesPerDocument[document.id] ?? 0
                             }
                         </TableCell>
-                        <TableCell>{document.fileSize}</TableCell>
-                        <TableCell>{formatDate(document.uploadedAt)}</TableCell>
-                        <TableCell className="text-right">
+                        <TableCell style={{ width: columnWidths.fileSize }} className="truncate">{formatFileSize(document.fileSize)}</TableCell>
+                        <TableCell style={{ width: columnWidths.uploaded }} className="truncate">{formatDate(document.uploadedAt)}</TableCell>
+                        <TableCell style={{ width: columnWidths.actions }} className="text-right">
                           <Button
                             variant="ghost"
                             size="sm"
@@ -536,41 +611,41 @@ export function ReviewDetailsView({ review }: ReviewDetailsViewProps) {
                       
                       {hasChildren && isExpanded && children.map((child) => (
                         <TableRow key={child.id} className="bg-muted/5 border-l-2 border-l-primary/30">
-                          <TableCell className="px-2">
+                          <TableCell style={{ width: columnWidths.selection }} className="px-2">
                             <Checkbox
                               checked={selectedDocumentIds.includes(child.id)}
                               onCheckedChange={(checked) => toggleDocumentSelection(child.id)}
                               aria-label={`Select ${child.documentName}`}
                             />
                           </TableCell>
-                          <TableCell className="pl-10 font-medium">
+                          <TableCell style={{ width: columnWidths.name }} className="pl-10 font-medium">
                             <div className="flex items-center gap-2">
                                 <div className="size-5 rounded bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold">
                                     {child.pageNumber}
                                 </div>
                                 <Link
-                                    href={`/reviews/${review.id}/documents/${child.id}`}
+                                    href={`/reviews/${review.id}/documents/${child.id}${child.pageNumber ? `?page=${child.pageNumber}` : ""}`}
                                     className="text-primary hover:underline font-medium text-left text-xs"
                                 >
                                     {child.documentName}
                                 </Link>
                             </div>
                           </TableCell>
-                          <TableCell className="text-xs">{child.documentCode}</TableCell>
-                          <TableCell className="text-xs">{child.state}</TableCell>
-                          <TableCell className="text-xs">{child.milestone}</TableCell>
-                          <TableCell className="text-xs">{child.suitability}</TableCell>
-                          <TableCell className="text-xs">{child.version}</TableCell>
-                          <TableCell className="text-xs">{child.revision}</TableCell>
-                          <TableCell className="text-xs">{issuesPerDocument[child.id] ?? 0}</TableCell>
-                          <TableCell className="text-xs">{child.fileSize}</TableCell>
-                          <TableCell className="text-xs">{formatDate(child.uploadedAt)}</TableCell>
-                          <TableCell className="text-right">
+                          <TableCell style={{ width: columnWidths.code }} className="text-xs truncate">{child.documentCode}</TableCell>
+                          <TableCell style={{ width: columnWidths.state }} className="text-xs truncate">{child.state}</TableCell>
+                          <TableCell style={{ width: columnWidths.milestone }} className="text-xs truncate">{child.milestone}</TableCell>
+                          <TableCell style={{ width: columnWidths.suitability }} className="text-xs truncate">{child.suitability}</TableCell>
+                          <TableCell style={{ width: columnWidths.version }} className="text-xs truncate">{child.version}</TableCell>
+                          <TableCell style={{ width: columnWidths.revision }} className="text-xs truncate">{child.revision}</TableCell>
+                          <TableCell style={{ width: columnWidths.issues }} className="text-xs truncate">{issuesPerDocument[child.id] ?? 0}</TableCell>
+                          <TableCell style={{ width: columnWidths.fileSize }} className="text-xs truncate">{formatFileSize(child.fileSize)}</TableCell>
+                          <TableCell style={{ width: columnWidths.uploaded }} className="text-xs truncate">{formatDate(child.uploadedAt)}</TableCell>
+                          <TableCell style={{ width: columnWidths.actions }} className="text-right">
                             <Button
                               variant="ghost"
                               size="sm"
                               className="h-7 px-2"
-                              onClick={() => router.push(`/reviews/${review.id}/documents/${child.id}`)}
+                              onClick={() => router.push(`/reviews/${review.id}/documents/${child.id}${child.pageNumber ? `?page=${child.pageNumber}` : ""}`)}
                             >
                               <FileText className="size-3" />
                               <span className="text-[10px]">Preview</span>
@@ -583,6 +658,7 @@ export function ReviewDetailsView({ review }: ReviewDetailsViewProps) {
                 })}
             </TableBody>
           </Table>
+          </div>
         </Card>
       </section>
 

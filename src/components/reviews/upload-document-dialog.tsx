@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, Fragment } from "react"
+import { useState, useEffect, useCallback, Fragment, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { Loader2, Upload } from "lucide-react"
 import { toast } from "sonner"
@@ -72,6 +72,50 @@ export function UploadDocumentDialog({ reviewId, projectId, bucket = "documents"
     const [selectedSetupId, setSelectedSetupId] = useState<string>("")
     const [isLoadingSetups, setIsLoadingSetups] = useState(false)
     const router = useRouter()
+    const fileInputRef = useRef<HTMLInputElement>(null)
+
+    // Resizable columns state
+    const [columnWidths, setColumnWidths] = useState({
+        title: 250,
+        code: 150,
+        revision: 80,
+        filename: 150,
+        multiPage: 100,
+        size: 80,
+        actions: 100
+    })
+
+    const isResizing = useRef<string | null>(null)
+    const startX = useRef<number>(0)
+    const startWidth = useRef<number>(0)
+
+    const handleMouseDown = (e: React.MouseEvent, column: keyof typeof columnWidths) => {
+        isResizing.current = column
+        startX.current = e.pageX
+        startWidth.current = columnWidths[column]
+        document.addEventListener("mousemove", handleMouseMove)
+        document.addEventListener("mouseup", handleMouseUp)
+        document.body.style.cursor = "col-resize"
+        e.preventDefault()
+    }
+
+    const handleMouseMove = useCallback((e: MouseEvent) => {
+        if (!isResizing.current) return
+        const diff = e.pageX - startX.current
+        const newWidth = Math.max(50, startWidth.current + diff)
+        
+        setColumnWidths(prev => ({
+            ...prev,
+            [isResizing.current as string]: newWidth
+        }))
+    }, [])
+
+    const handleMouseUp = useCallback(() => {
+        isResizing.current = null
+        document.removeEventListener("mousemove", handleMouseMove)
+        document.removeEventListener("mouseup", handleMouseUp)
+        document.body.style.cursor = "default"
+    }, [handleMouseMove])
 
     const extractionSetupPlaceholder = isLoadingSetups
         ? "Loading setups..."
@@ -354,7 +398,7 @@ export function UploadDocumentDialog({ reviewId, projectId, bucket = "documents"
                     Upload document
                 </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[1000px] w-full max-h-[90vh] overflow-y-auto">
+            <DialogContent className="sm:max-w-[1200px] w-full max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle>Upload Document</DialogTitle>
                     <DialogDescription>
@@ -385,25 +429,78 @@ export function UploadDocumentDialog({ reviewId, projectId, bucket = "documents"
                             </Select>
                         </div>
                         <div className="grid w-full items-center gap-1.5">
-                            <Label htmlFor="document">Files</Label>
-                            <Input id="document" type="file" multiple onChange={handleFileChange} />
+                            <Label>Files</Label>
+                            <div className="flex items-center gap-2">
+                                <Button 
+                                    variant="outline" 
+                                    onClick={() => fileInputRef.current?.click()}
+                                    className="w-full gap-2 border-dashed border-2 h-10 hover:border-primary hover:text-primary transition-colors"
+                                >
+                                    <Upload className="size-4" />
+                                    Add files
+                                </Button>
+                                <Input 
+                                    ref={fileInputRef}
+                                    id="document" 
+                                    type="file" 
+                                    multiple 
+                                    onChange={handleFileChange} 
+                                    className="hidden"
+                                />
+                            </div>
                         </div>
                         <p className="text-xs text-muted-foreground sm:col-span-2">
                             Choose how metadata extraction should read code, title, and revision from your PDFs.
                         </p>
                     </div>
                     {fileEntries.length > 0 && (
-                        <div className="rounded-md border border-muted/50">
-                            <Table>
+                        <div className="rounded-md border border-muted/50 overflow-x-auto">
+                            <Table style={{ tableLayout: "fixed", width: "100%" }}>
                                 <TableHeader>
                                     <TableRow>
-                                        <TableHead className="w-[25%]">Title</TableHead>
-                                        <TableHead className="w-[15%]">Document Code</TableHead>
-                                        <TableHead className="w-[10%]">Revision</TableHead>
-                                        <TableHead className="w-[15%]">Filename</TableHead>
-                                        <TableHead className="w-[10%] text-center">Multi-page</TableHead>
-                                        <TableHead className="w-[10%] text-right">Size</TableHead>
-                                        <TableHead className="w-[15%] text-right">Actions</TableHead>
+                                        <TableHead style={{ width: columnWidths.title }} className="relative group">
+                                            Title
+                                            <div 
+                                                onMouseDown={(e) => handleMouseDown(e, "title")}
+                                                className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-primary/50 group-hover:bg-primary/20 transition-colors"
+                                            />
+                                        </TableHead>
+                                        <TableHead style={{ width: columnWidths.code }} className="relative group">
+                                            Document Code
+                                            <div 
+                                                onMouseDown={(e) => handleMouseDown(e, "code")}
+                                                className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-primary/50 group-hover:bg-primary/20 transition-colors"
+                                            />
+                                        </TableHead>
+                                        <TableHead style={{ width: columnWidths.revision }} className="relative group">
+                                            Revision
+                                            <div 
+                                                onMouseDown={(e) => handleMouseDown(e, "revision")}
+                                                className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-primary/50 group-hover:bg-primary/20 transition-colors"
+                                            />
+                                        </TableHead>
+                                        <TableHead style={{ width: columnWidths.filename }} className="relative group">
+                                            Filename
+                                            <div 
+                                                onMouseDown={(e) => handleMouseDown(e, "filename")}
+                                                className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-primary/50 group-hover:bg-primary/20 transition-colors"
+                                            />
+                                        </TableHead>
+                                        <TableHead style={{ width: columnWidths.multiPage }} className="relative group text-center">
+                                            Multi-page
+                                            <div 
+                                                onMouseDown={(e) => handleMouseDown(e, "multiPage")}
+                                                className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-primary/50 group-hover:bg-primary/20 transition-colors"
+                                            />
+                                        </TableHead>
+                                        <TableHead style={{ width: columnWidths.size }} className="relative group text-right">
+                                            Size
+                                            <div 
+                                                onMouseDown={(e) => handleMouseDown(e, "size")}
+                                                className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-primary/50 group-hover:bg-primary/20 transition-colors"
+                                            />
+                                        </TableHead>
+                                        <TableHead style={{ width: columnWidths.actions }} className="text-right">Actions</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>

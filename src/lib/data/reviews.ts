@@ -325,6 +325,32 @@ export async function getDocumentForReview(reviewId: string, documentId: string)
   }
 }
 
+export async function getChildDocuments(parentId: string): Promise<ReviewDocument[]> {
+  try {
+    const supabase = await createServerSupabaseClient()
+
+    const { data, error } = await supabase
+      .from("documents")
+      .select("*")
+      .eq("parent_id", parentId)
+      .order("page_number", { ascending: true })
+
+    if (error) {
+      throw new Error(error.message)
+    }
+
+    if (!data || !Array.isArray(data)) {
+      return []
+    }
+
+    const records = data as unknown as DocumentRow[]
+    return mapDocuments(records)
+  } catch (error) {
+    console.error(`Failed to fetch child documents for parent ${parentId}`, error)
+    return []
+  }
+}
+
 export async function getAnnotationsForDocument(documentId: string) {
   try {
     const supabase = await createServerSupabaseClient()
