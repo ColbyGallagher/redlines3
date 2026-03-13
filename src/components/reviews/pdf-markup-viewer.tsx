@@ -6,7 +6,7 @@ import { PDFDocument, rgb } from "pdf-lib"
 import { Document, Page, pdfjs } from "react-pdf"
 import "react-pdf/dist/Page/TextLayer.css"
 import "react-pdf/dist/Page/AnnotationLayer.css"
-import { AlertTriangle, Loader2, Hand, Type, MessageSquare, AlertCircle } from "lucide-react"
+import { AlertTriangle, Loader2, Hand, Type, MessageSquare, AlertCircle, LayoutGrid, PanelLeft } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
@@ -98,6 +98,7 @@ export function PDFMarkupViewer({ reviewId, document, childDocuments = [], initi
   const [zoomLevel, setZoomLevel] = useState(1.0) // This is the visual scale (instant)
   const [pageAspectRatios, setPageAspectRatios] = useState<number[]>([])
   const [currentPage, setCurrentPage] = useState(1)
+  const [sidebarTab, setSidebarTab] = useState<"properties" | "thumbnails">("properties")
   const targetScrollRef = useRef<{ left: number; top: number } | null>(null)
 
   // Apply synchronous scroll adjustment for zoom-to-pointer
@@ -599,112 +600,150 @@ export function PDFMarkupViewer({ reviewId, document, childDocuments = [], initi
 
       {/* 2. Main Content Area */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Properties Sidebar */}
+        {/* Sidebar */}
         <aside className="flex w-72 flex-col border-r bg-card">
-          <div className="border-b p-4">
-            <h3 className="text-sm font-semibold">Properties</h3>
+          <div className="border-b">
+            <div className="flex">
+              <button
+                type="button"
+                onClick={() => setSidebarTab("properties")}
+                className={cn(
+                  "flex-1 flex items-center justify-center gap-1.5 px-4 py-3 text-xs font-semibold uppercase tracking-wider transition-colors border-b-2",
+                  sidebarTab === "properties"
+                    ? "border-primary text-primary"
+                    : "border-transparent text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <PanelLeft className="h-3.5 w-3.5" />
+                Properties
+              </button>
+              <button
+                type="button"
+                onClick={() => setSidebarTab("thumbnails")}
+                className={cn(
+                  "flex-1 flex items-center justify-center gap-1.5 px-4 py-3 text-xs font-semibold uppercase tracking-wider transition-colors border-b-2",
+                  sidebarTab === "thumbnails"
+                    ? "border-primary text-primary"
+                    : "border-transparent text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <LayoutGrid className="h-3.5 w-3.5" />
+                Thumbnails
+              </button>
+            </div>
           </div>
-          <div className="flex-1 overflow-auto p-4">
-            {selectedAnnotation ? (
-              <div className="space-y-4">
-                <div className="space-y-1">
-                  <p className="text-xs font-semibold text-muted-foreground">Content</p>
-                  <p className="text-sm font-medium break-words">{selectedAnnotation.content}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs font-semibold text-muted-foreground">Author</p>
-                  <p className="text-sm">{selectedAnnotation.createdBy}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs font-semibold text-muted-foreground">Created</p>
-                  <p className="text-sm">{new Date(selectedAnnotation.createdAt).toLocaleString()}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs font-semibold text-muted-foreground">Color</p>
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="inline-flex h-5 w-5 rounded-full border"
-                      style={{ backgroundColor: selectedAnnotation.color }}
-                    />
-                    <span className="text-xs text-muted-foreground">{selectedAnnotation.color}</span>
+          {sidebarTab === "properties" ? (
+            <div className="flex-1 overflow-auto p-4">
+              {selectedAnnotation ? (
+                <div className="space-y-4">
+                  <div className="space-y-1">
+                    <p className="text-xs font-semibold text-muted-foreground">Content</p>
+                    <p className="text-sm font-medium break-words">{selectedAnnotation.content}</p>
                   </div>
-                </div>
-                {selectedAnnotation.issueId && (
-                  <div className="space-y-2 rounded-md border border-border bg-muted/50 p-3 text-xs">
-                    {issueLoading ? (
-                      <p className="text-muted-foreground">Loading issue details…</p>
-                    ) : issueError ? (
-                      <p className="text-destructive">{issueError}</p>
-                    ) : issueDetails ? (
-                      <div className="space-y-3">
-                        <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Linked issue</p>
-                        <dl className="space-y-2 text-[11px]">
-                          <div className="flex items-center justify-between">
-                            <dt className="text-muted-foreground">Issue #</dt>
-                            <dd className="font-medium">{issueDetails.issueNumber ?? "Unknown"}</dd>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <dt className="text-muted-foreground">Discipline</dt>
-                            <dd className="font-medium">{issueDetails.discipline ?? "Unknown"}</dd>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <dt className="text-muted-foreground">Importance</dt>
-                            <dd className="font-medium">{issueDetails.importance ?? "Unknown"}</dd>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <dt className="text-muted-foreground">Created by</dt>
-                            <dd className="font-medium">{issueDetails.createdBy ?? "Unknown"}</dd>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <dt className="text-muted-foreground">Date created</dt>
-                            <dd className="font-medium">{formatIssueTimestamp(issueDetails.dateCreated)}</dd>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <dt className="text-muted-foreground">Last modified</dt>
-                            <dd className="font-medium">{formatIssueTimestamp(issueDetails.dateModified)}</dd>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <dt className="text-muted-foreground">Status</dt>
-                            <dd className="font-medium">{issueDetails.status ?? "Unknown"}</dd>
-                          </div>
-                        </dl>
-                      </div>
-                    ) : (
-                      <p className="text-muted-foreground">Issue data not available.</p>
+                  <div className="space-y-1">
+                    <p className="text-xs font-semibold text-muted-foreground">Author</p>
+                    <p className="text-sm">{selectedAnnotation.createdBy}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs font-semibold text-muted-foreground">Created</p>
+                    <p className="text-sm">{new Date(selectedAnnotation.createdAt).toLocaleString()}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs font-semibold text-muted-foreground">Color</p>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="inline-flex h-5 w-5 rounded-full border"
+                        style={{ backgroundColor: selectedAnnotation.color }}
+                      />
+                      <span className="text-xs text-muted-foreground">{selectedAnnotation.color}</span>
+                    </div>
+                  </div>
+                  {selectedAnnotation.issueId && (
+                    <div className="space-y-2 rounded-md border border-border bg-muted/50 p-3 text-xs">
+                      {issueLoading ? (
+                        <p className="text-muted-foreground">Loading issue details…</p>
+                      ) : issueError ? (
+                        <p className="text-destructive">{issueError}</p>
+                      ) : issueDetails ? (
+                        <div className="space-y-3">
+                          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Linked issue</p>
+                          <dl className="space-y-2 text-[11px]">
+                            <div className="flex items-center justify-between">
+                              <dt className="text-muted-foreground">Issue #</dt>
+                              <dd className="font-medium">{issueDetails.issueNumber ?? "Unknown"}</dd>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <dt className="text-muted-foreground">Discipline</dt>
+                              <dd className="font-medium">{issueDetails.discipline ?? "Unknown"}</dd>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <dt className="text-muted-foreground">Importance</dt>
+                              <dd className="font-medium">{issueDetails.importance ?? "Unknown"}</dd>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <dt className="text-muted-foreground">Created by</dt>
+                              <dd className="font-medium">{issueDetails.createdBy ?? "Unknown"}</dd>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <dt className="text-muted-foreground">Date created</dt>
+                              <dd className="font-medium">{formatIssueTimestamp(issueDetails.dateCreated)}</dd>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <dt className="text-muted-foreground">Last modified</dt>
+                              <dd className="font-medium">{formatIssueTimestamp(issueDetails.dateModified)}</dd>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <dt className="text-muted-foreground">Status</dt>
+                              <dd className="font-medium">{issueDetails.status ?? "Unknown"}</dd>
+                            </div>
+                          </dl>
+                        </div>
+                      ) : (
+                        <p className="text-muted-foreground">Issue data not available.</p>
+                      )}
+                    </div>
+                  )}
+                  <div className="space-y-2">
+                    <Button
+                      variant="secondary"
+                      className="w-full"
+                      onClick={handleOpenConvertDialog}
+                      disabled={Boolean(selectedAnnotation.issueId)}
+                    >
+                      {selectedAnnotation.issueId ? "Annotation already linked" : "Convert to issue"}
+                    </Button>
+                    {selectedAnnotation.issueId && (
+                      <p className="text-xs text-muted-foreground">This annotation is already linked to an issue.</p>
+                    )}
+                    {settingsError && (
+                      <p className="text-xs text-destructive">{settingsError}</p>
                     )}
                   </div>
-                )}
-                <div className="space-y-2">
                   <Button
-                    variant="secondary"
-                    className="w-full"
-                    onClick={handleOpenConvertDialog}
-                    disabled={Boolean(selectedAnnotation.issueId)}
+                    variant="outline"
+                    className="w-full text-destructive hover:bg-destructive hover:text-destructive-foreground"
+                    onClick={() => handleDeleteAnnotation(selectedAnnotation.id)}
                   >
-                    {selectedAnnotation.issueId ? "Annotation already linked" : "Convert to issue"}
+                    Delete Markup
                   </Button>
-                  {selectedAnnotation.issueId && (
-                    <p className="text-xs text-muted-foreground">This annotation is already linked to an issue.</p>
-                  )}
-                  {settingsError && (
-                    <p className="text-xs text-destructive">{settingsError}</p>
-                  )}
                 </div>
-                <Button
-                  variant="outline"
-                  className="w-full text-destructive hover:bg-destructive hover:text-destructive-foreground"
-                  onClick={() => handleDeleteAnnotation(selectedAnnotation.id)}
-                >
-                  Delete Markup
-                </Button>
-              </div>
-            ) : (
-              <div className="flex h-full flex-col items-center justify-center text-center text-sm text-muted-foreground">
-                <p>No markup selected</p>
-                <p className="text-xs">Select a markup to view details.</p>
-              </div>
-            )}
-          </div>
+              ) : (
+                <div className="flex h-full flex-col items-center justify-center text-center text-sm text-muted-foreground">
+                  <p>No markup selected</p>
+                  <p className="text-xs">Select a markup to view details.</p>
+                </div>
+              )}
+            </div>
+          ) : (
+            <ThumbnailsPanel
+              numPages={numPages}
+              currentPage={currentPage}
+              childDocuments={childDocuments}
+              parentDocumentCode={document.code}
+              pdfUrl={document.pdfUrl}
+              scrollRef={scrollRef}
+            />
+          )}
         </aside>
 
         {/* PDF Scroll Container */}
@@ -1012,6 +1051,118 @@ function VirtualizedPage({
           <span className="text-xs text-muted-foreground/20">Page {pageNumber}</span>
         </div>
       )}
+    </div>
+  )
+}
+
+function ThumbnailsPanel({
+  numPages,
+  currentPage,
+  childDocuments,
+  parentDocumentCode,
+  pdfUrl,
+  scrollRef,
+}: {
+  numPages: number
+  currentPage: number
+  childDocuments: ReviewDocument[]
+  parentDocumentCode: string
+  pdfUrl: string
+  scrollRef: React.RefObject<HTMLDivElement | null>
+}) {
+  const thumbnailListRef = useRef<HTMLDivElement>(null)
+
+  const scrollToPage = useCallback((pageNumber: number) => {
+    if (!scrollRef.current) return
+    const pageElements = scrollRef.current.querySelectorAll(".relative.border-b.bg-white")
+    if (pageElements && pageElements[pageNumber - 1]) {
+      pageElements[pageNumber - 1].scrollIntoView({ behavior: "smooth", block: "start" })
+    }
+  }, [scrollRef])
+
+  // Auto-scroll the thumbnail list to keep current page visible
+  useEffect(() => {
+    if (!thumbnailListRef.current) return
+    const activeThumb = thumbnailListRef.current.querySelector(`[data-thumb-page="${currentPage}"]`)
+    if (activeThumb) {
+      activeThumb.scrollIntoView({ behavior: "smooth", block: "nearest" })
+    }
+  }, [currentPage])
+
+  if (numPages === 0) {
+    return (
+      <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
+        Loading pages…
+      </div>
+    )
+  }
+
+  return (
+    <div ref={thumbnailListRef} className="flex-1 overflow-auto p-3">
+      <Document file={pdfUrl} loading={null}>
+        <div className="space-y-3">
+          {Array.from({ length: numPages }, (_, index) => {
+            const pageNum = index + 1
+            const isActive = currentPage === pageNum
+            const childDoc = childDocuments.find(d => d.pageNumber === pageNum)
+            const docCode = childDoc?.documentCode || parentDocumentCode
+            const docName = childDoc?.documentName
+
+            return (
+              <button
+                key={pageNum}
+                type="button"
+                data-thumb-page={pageNum}
+                onClick={() => scrollToPage(pageNum)}
+                className={cn(
+                  "group w-full rounded-lg border-2 bg-white p-1 transition-all hover:shadow-md",
+                  isActive
+                    ? "border-primary ring-2 ring-primary/20 shadow-sm"
+                    : "border-border hover:border-primary/40"
+                )}
+              >
+                <div className="relative overflow-hidden rounded">
+                  <Page
+                    pageNumber={pageNum}
+                    width={200}
+                    renderAnnotationLayer={false}
+                    renderTextLayer={false}
+                    loading={
+                      <div className="flex items-center justify-center bg-muted/20" style={{ width: 200, height: 140 }}>
+                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground/40" />
+                      </div>
+                    }
+                  />
+                  {/* Page number badge */}
+                  <div className={cn(
+                    "absolute top-1.5 left-1.5 rounded px-1.5 py-0.5 text-[10px] font-bold shadow-sm",
+                    isActive
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-background/90 text-muted-foreground"
+                  )}>
+                    {pageNum}
+                  </div>
+                </div>
+                <div className="mt-1.5 px-1 pb-0.5 text-left">
+                  {docCode && (
+                    <code className={cn(
+                      "block truncate font-mono text-[10px] font-semibold",
+                      isActive ? "text-primary" : "text-foreground"
+                    )}>
+                      {docCode}
+                    </code>
+                  )}
+                  {docName && (
+                    <span className="block truncate text-[10px] text-muted-foreground mt-0.5">
+                      {docName}
+                    </span>
+                  )}
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      </Document>
     </div>
   )
 }
