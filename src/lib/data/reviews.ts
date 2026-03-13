@@ -37,6 +37,8 @@ export type ReviewDocument = {
   pdfUrl: string
   fileSize: string
   uploadedAt: string
+  parentId?: string
+  pageNumber?: number
 }
 
 export type ReviewIssue = {
@@ -161,6 +163,8 @@ function mapDocuments(documents: DocumentRow[] | null | undefined): ReviewDocume
     pdfUrl: document.pdf_url ?? "",
     fileSize: document.file_size ?? "",
     uploadedAt: document.uploaded_at ?? "",
+    parentId: document.parent_id ?? undefined,
+    pageNumber: document.page_number ?? undefined,
   }))
 }
 

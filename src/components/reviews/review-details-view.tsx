@@ -1,9 +1,9 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import React, { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Calendar, Clock, Download, FileText, MapPin, Trash2, Users } from "lucide-react"
+import { Calendar, Clock, Download, FileText, MapPin, Trash2, Users, ChevronRight, ChevronDown, Layers } from "lucide-react"
 import { toast } from "sonner"
 
 import { Badge } from "@/components/ui/badge"
@@ -72,6 +72,7 @@ export function ReviewDetailsView({ review }: ReviewDetailsViewProps) {
   const [bulkDeleteDialogOpen, setBulkDeleteDialogOpen] = useState(false)
   const [bulkDeleteIncludeIssues, setBulkDeleteIncludeIssues] = useState(false)
   const [isDeletingSelection, setIsDeletingSelection] = useState(false)
+  const [expandedParents, setExpandedParents] = useState<string[]>([])
 
   const handleDeleteDocument = async () => {
     if (!selectedDocument) return
@@ -129,6 +130,14 @@ export function ReviewDetailsView({ review }: ReviewDetailsViewProps) {
       previous.includes(documentId)
         ? previous.filter((id) => id !== documentId)
         : [...previous, documentId],
+    )
+  }
+  
+  const toggleParentExpansion = (parentId: string) => {
+    setExpandedParents(prev => 
+      prev.includes(parentId) 
+        ? prev.filter(id => id !== parentId)
+        : [...prev, parentId]
     )
   }
 
@@ -440,58 +449,138 @@ export function ReviewDetailsView({ review }: ReviewDetailsViewProps) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {review.documents.map((document) => (
-                <TableRow key={document.id}>
-                  <TableCell className="px-2">
-                    <Checkbox
-                      checked={selectedDocumentIds.includes(document.id)}
-                      onCheckedChange={(checked) => toggleDocumentSelection(document.id)}
-                      aria-label={`Select ${document.documentName}`}
-                    />
-                  </TableCell>
-                  <TableCell className="font-medium">
-                    <Link
-                      href={`/reviews/${review.id}/documents/${document.id}`}
-                      className="text-primary hover:underline font-medium text-left"
-                    >
-                      {document.documentName}
-                    </Link>
-                  </TableCell>
-                  <TableCell>{document.documentCode}</TableCell>
-                  <TableCell>{document.state}</TableCell>
-                  <TableCell>{document.milestone}</TableCell>
-                  <TableCell>{document.suitability}</TableCell>
-                  <TableCell>{document.version}</TableCell>
-                  <TableCell>{document.revision}</TableCell>
-                  <TableCell>{issuesPerDocument[document.id] ?? 0}</TableCell>
-                  <TableCell>{document.fileSize}</TableCell>
-                  <TableCell>{formatDate(document.uploadedAt)}</TableCell>
-                  <TableCell className="text-right">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="gap-1"
-                      onClick={() => router.push(`/reviews/${review.id}/documents/${document.id}`)}
-                    >
-                      <FileText className="size-4" />
-                      Preview
-                    </Button>
-                    <Button variant="ghost" size="sm" className="gap-1">
-                      <Download className="size-4" />
-                      Download
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="gap-1 text-destructive hover:text-destructive hover:bg-destructive/10"
-                      onClick={() => openDeleteDialog(document.id, document.documentName)}
-                    >
-                      <Trash2 className="size-4" />
-                      Delete
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {review.documents
+                .filter(doc => !doc.parentId) // Only show top-level documents initially
+                .map((document) => {
+                  const children = review.documents.filter(d => d.parentId === document.id)
+                  const isExpanded = expandedParents.includes(document.id)
+                  const hasChildren = children.length > 0
+
+                  return (
+                    <React.Fragment key={document.id}>
+                      <TableRow className={cn(hasChildren && "bg-muted/10 font-medium")}>
+                        <TableCell className="px-2">
+                          <Checkbox
+                            checked={selectedDocumentIds.includes(document.id)}
+                            onCheckedChange={(checked) => toggleDocumentSelection(document.id)}
+                            aria-label={`Select ${document.documentName}`}
+                          />
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          <div className="flex items-center gap-2">
+                            {hasChildren && (
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                className="h-6 w-6 p-0" 
+                                onClick={() => toggleParentExpansion(document.id)}
+                              >
+                                {isExpanded ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
+                              </Button>
+                            )}
+                            {hasChildren ? (
+                                <div className="flex items-center gap-2 text-primary">
+                                    <Layers className="size-4" />
+                                    <span>{document.documentName}</span>
+                                    <Badge variant="secondary" className="text-[10px] h-4 px-1">{children.length} drawings</Badge>
+                                </div>
+                            ) : (
+                                <Link
+                                    href={`/reviews/${review.id}/documents/${document.id}`}
+                                    className="text-primary hover:underline font-medium text-left"
+                                >
+                                    {document.documentName}
+                                </Link>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>{document.documentCode}</TableCell>
+                        <TableCell>{document.state}</TableCell>
+                        <TableCell>{document.milestone}</TableCell>
+                        <TableCell>{document.suitability}</TableCell>
+                        <TableCell>{document.version}</TableCell>
+                        <TableCell>{document.revision}</TableCell>
+                        <TableCell>
+                            {hasChildren 
+                                ? children.reduce((acc, child) => acc + (issuesPerDocument[child.id] ?? 0), 0) + (issuesPerDocument[document.id] ?? 0)
+                                : issuesPerDocument[document.id] ?? 0
+                            }
+                        </TableCell>
+                        <TableCell>{document.fileSize}</TableCell>
+                        <TableCell>{formatDate(document.uploadedAt)}</TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="gap-1"
+                            onClick={() => router.push(`/reviews/${review.id}/documents/${document.id}`)}
+                          >
+                            <FileText className="size-4" />
+                            Preview
+                          </Button>
+                          <Button variant="ghost" size="sm" className="gap-1">
+                            <Download className="size-4" />
+                            Download
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="gap-1 text-destructive hover:text-destructive hover:bg-destructive/10"
+                            onClick={() => openDeleteDialog(document.id, document.documentName)}
+                          >
+                            <Trash2 className="size-4" />
+                            Delete
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                      
+                      {hasChildren && isExpanded && children.map((child) => (
+                        <TableRow key={child.id} className="bg-muted/5 border-l-2 border-l-primary/30">
+                          <TableCell className="px-2">
+                            <Checkbox
+                              checked={selectedDocumentIds.includes(child.id)}
+                              onCheckedChange={(checked) => toggleDocumentSelection(child.id)}
+                              aria-label={`Select ${child.documentName}`}
+                            />
+                          </TableCell>
+                          <TableCell className="pl-10 font-medium">
+                            <div className="flex items-center gap-2">
+                                <div className="size-5 rounded bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold">
+                                    {child.pageNumber}
+                                </div>
+                                <Link
+                                    href={`/reviews/${review.id}/documents/${child.id}`}
+                                    className="text-primary hover:underline font-medium text-left text-xs"
+                                >
+                                    {child.documentName}
+                                </Link>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-xs">{child.documentCode}</TableCell>
+                          <TableCell className="text-xs">{child.state}</TableCell>
+                          <TableCell className="text-xs">{child.milestone}</TableCell>
+                          <TableCell className="text-xs">{child.suitability}</TableCell>
+                          <TableCell className="text-xs">{child.version}</TableCell>
+                          <TableCell className="text-xs">{child.revision}</TableCell>
+                          <TableCell className="text-xs">{issuesPerDocument[child.id] ?? 0}</TableCell>
+                          <TableCell className="text-xs">{child.fileSize}</TableCell>
+                          <TableCell className="text-xs">{formatDate(child.uploadedAt)}</TableCell>
+                          <TableCell className="text-right">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 px-2"
+                              onClick={() => router.push(`/reviews/${review.id}/documents/${child.id}`)}
+                            >
+                              <FileText className="size-3" />
+                              <span className="text-[10px]">Preview</span>
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </React.Fragment>
+                  )
+                })}
             </TableBody>
           </Table>
         </Card>

@@ -21,8 +21,9 @@ import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
-  SidebarHeader,
   SidebarGroup,
+  SidebarGroupContent,
+  SidebarHeader,
   SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuButton,
@@ -40,13 +41,12 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
 import { useEffect, useMemo, useState } from "react"
-import { NavProjects } from "@/components/nav-projects"
+import { ProjectSwitcher } from "@/components/project-switcher"
 import { ProjectSettingsSheet } from "@/components/projects/project-settings-sheet"
 
 type SidebarProject = {
   id: string
   name: string
-  url: string
 }
 
 type SidebarCompany = {
@@ -60,6 +60,8 @@ type SidebarReview = {
   id: string
   name: string
   href: string
+  projectId: string | null
+  projectName: string
 }
 
 type SidebarApiResponse = {
@@ -179,6 +181,32 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     return roles.includes("developer") || roles.includes("org admin")
   }, [user])
 
+  const sidebarTeams = useMemo(
+    () =>
+      companies.map((company) => ({
+        id: company.id,
+        name: company.name,
+        logo: Folder,
+        plan: company.plan,
+        active: company.active,
+      })),
+    [companies],
+  )
+
+  const reviewsByProject = useMemo(() => {
+    const groups = new Map<string, SidebarReview[]>()
+
+    for (const review of recentReviews) {
+      const projectLabel = review.projectName || "Unassigned project"
+      if (!groups.has(projectLabel)) {
+        groups.set(projectLabel, [])
+      }
+      groups.get(projectLabel)?.push(review)
+    }
+
+    return Array.from(groups.entries()).sort(([a], [b]) => a.localeCompare(b))
+  }, [recentReviews])
+
   if (!isMounted) {
     return null
   }
@@ -186,15 +214,14 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
-        <div className="flex items-center gap-2 px-1 group-data-[state=collapsed]:justify-center">
-          <div className="group-data-[state=collapsed]:hidden flex-1">
-            <TeamSwitcher
-              teams={companies.map(c => ({
-                id: c.id,
-                name: c.name,
-                logo: Folder,
-                plan: c.plan
-              }))}
+        <div className="flex items-center gap-2">
+          <div className="flex-1">
+            <ProjectSwitcher
+              projects={projects}
+              activeProjectId={activeProjectId}
+              isDashboardActive={isDashboardActive}
+              loading={isLoadingSidebar}
+              error={sidebarError}
             />
           </div>
           <SidebarTrigger className="hidden md:flex" />
@@ -240,12 +267,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           </SidebarGroup>
         ) : null}
 
-        <NavProjects projects={projects.map((project) => ({
-          id: project.id,
-          name: project.name,
-          url: `/projects/${project.id}`,
-        }))} />
-
         {activeProjectId ? (
           <SidebarGroup className="group-data-[collapsible=icon]:hidden">
             <SidebarGroupLabel>Project tools</SidebarGroupLabel>
@@ -284,6 +305,37 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             })}
           </SidebarMenu>
         </SidebarGroup>
+
+        {reviewsByProject.length > 0 && (
+          <SidebarGroup className="group-data-[collapsible=icon]:hidden">
+            <SidebarGroupLabel>Reviews by project</SidebarGroupLabel>
+            <SidebarGroupContent className="space-y-3">
+              {reviewsByProject.map(([projectName, reviews]) => (
+                <div key={projectName} className="space-y-1">
+                  <p className="px-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    {projectName}
+                  </p>
+                  <SidebarMenu>
+                    {reviews.map((review) => {
+                      const isActive = pathname?.startsWith(`/reviews/${review.id}`)
+
+                      return (
+                        <SidebarMenuItem key={review.id}>
+                          <SidebarMenuButton asChild tooltip={review.name} isActive={isActive}>
+                            <Link href={review.href}>
+                              <ClipboardList />
+                              <span>{review.name}</span>
+                            </Link>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                      )
+                    })}
+                  </SidebarMenu>
+                </div>
+              ))}
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
 
         <SidebarGroup>
           <SidebarMenu>
@@ -324,6 +376,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       </SidebarContent>
       <SidebarFooter>
         <NavUser user={user} />
+        {sidebarTeams.length > 0 && (
+          <div className="group-data-[state=collapsed]:hidden">
+            <TeamSwitcher teams={sidebarTeams} />
+          </div>
+        )}
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>

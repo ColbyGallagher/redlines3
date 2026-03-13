@@ -618,6 +618,66 @@ export async function getProjectSummaryById(projectId: string): Promise<ProjectS
   }
 }
 
+export async function getProjectSettings(projectId: string) {
+  try {
+    const supabase = await createServerSupabaseClient()
+
+    const { data, error } = await (supabase as any)
+      .from("projects")
+      .select("settings")
+      .eq("id", projectId)
+      .maybeSingle()
+
+    if (error) {
+      throw new Error(error.message)
+    }
+
+    if (!data) {
+      return undefined
+    }
+
+    return data.settings
+  } catch (error) {
+    throw new Error(
+      `Failed to fetch settings for project ${projectId}: ${error instanceof Error ? error.message : "Unknown error"}`,
+    )
+  }
+}
+
+export async function getProjectExtractionSetups(projectId: string) {
+  try {
+    const supabase = await createServerSupabaseClient()
+
+    const { data, error } = await (supabase as any)
+      .from("projects")
+      .select("settings->extraction_setups")
+      .eq("id", projectId)
+      .maybeSingle()
+
+    if (error) {
+      throw new Error(error.message)
+    }
+
+    if (!data) {
+      return undefined
+    }
+
+    const extractionSetups = data.extraction_setups
+    if (!extractionSetups) {
+      return []
+    }
+
+    // Need to import ExtractionSetup if not available, but let's assume it's available or cast to any for now
+    // Based on previous views, ExtractionSetup is used in the return type
+    return Array.isArray(extractionSetups) ? extractionSetups : []
+  } catch (error) {
+    throw new Error(
+      `Failed to fetch project extraction setups ${projectId}: ${error instanceof Error ? error.message : "Unknown error"}`,
+    )
+  }
+}
+
+
 export async function updateProjectSettings(projectId: string, settings: ProjectSettings): Promise<void> {
   try {
     const supabase = await createServerSupabaseClient()
@@ -626,10 +686,20 @@ export async function updateProjectSettings(projectId: string, settings: Project
     // In a production app, this would ideally use a database transaction or a stored procedure.
 
     // 1. Update single-value settings in the projects table
+    // Fetch current settings first to avoid overwriting fields we're not touching (like extraction_setups)
+    const { data: currentProject } = await (supabase as any)
+      .from("projects")
+      .select("settings")
+      .eq("id", projectId)
+      .single()
+
+    const currentSettings = currentProject?.settings || {}
+
     const { error: projectError } = await (supabase as any)
       .from("projects")
       .update({
         settings: {
+          ...currentSettings,
           documentNamingConvention: settings.documentNamingConvention,
           documentCodeLocation: settings.documentCodeLocation,
           titleblockTemplateUrl: settings.titleblockTemplateUrl
