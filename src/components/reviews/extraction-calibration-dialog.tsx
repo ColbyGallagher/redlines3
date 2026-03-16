@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useRef, useEffect, useCallback } from "react"
-import { Document, Page, pdfjs } from "react-pdf"
+import * as pdfjs from "pdfjs-dist"
 import { Loader2, Crosshair, Save, X, ZoomIn, ZoomOut, Maximize, Hand } from "lucide-react"
 import { toast } from "sonner"
 
@@ -19,7 +19,6 @@ import {
 import { cn } from "@/lib/utils"
 import { ExtractionSettings, ExtractionArea } from "@/lib/db/types"
 
-// Ensure worker is set for react-pdf
 if (typeof window !== "undefined") {
     pdfjs.GlobalWorkerOptions.workerSrc = new URL(
         "pdfjs-dist/build/pdf.worker.min.mjs",
@@ -72,10 +71,56 @@ export function ExtractionCalibrationDialog({
         }
     }, [open, initialSettings, initialName])
 
-    const handleDocumentLoad = (pdf: any) => {
-        setPdfDoc(pdf)
-        setNumPages(pdf.numPages)
-    }
+    // Load PDF using pdfjs-dist directly
+    useEffect(() => {
+        if (!open || !pdfUrl) return
+
+        const loadPdf = async () => {
+            try {
+                // Set worker path (it's in node_modules/pdfjs-dist/build/pdf.worker.mjs)
+                // In Phase 1 we didn't copy this specific worker, but pdfjs-dist typically handles it
+                // Or we can use the CDN worker for now if local fails
+                pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.mjs`
+                
+                const loadingTask = pdfjs.getDocument(pdfUrl)
+                const pdf = await loadingTask.promise
+                setPdfDoc(pdf)
+                setNumPages(pdf.numPages)
+            } catch (err) {
+                console.error("Error loading PDF in calibration:", err)
+                toast.error("Failed to load PDF for calibration")
+            }
+        }
+        loadPdf()
+    }, [open, pdfUrl])
+
+    // Render Page 1 to Canvas
+    const canvasRef = useRef<HTMLCanvasElement>(null)
+    useEffect(() => {
+        if (!pdfDoc || !canvasRef.current) return
+
+        const renderPage = async () => {
+            try {
+                const page = await pdfDoc.getPage(1)
+                const canvas = canvasRef.current!
+                const context = canvas.getContext("2d")
+                if (!context) return
+
+                const viewport = page.getViewport({ scale: (600 * scale) / page.getViewport({ scale: 1 }).width })
+                canvas.height = viewport.height
+                canvas.width = viewport.width
+
+                const renderContext = {
+                    canvasContext: context,
+                    viewport: viewport,
+                }
+                await page.render(renderContext).promise
+            } catch (err) {
+                console.error("Error rendering page in calibration:", err)
+            }
+        }
+        renderPage()
+    }, [pdfDoc, scale])
 
     const extractText = useCallback(async (area: ExtractionArea, type: CalibrationType) => {
         if (!pdfDoc) return
@@ -350,18 +395,7 @@ export function ExtractionCalibrationDialog({
                                 width: `${600 * scale}px`,
                             }}
                         >
-                            <Document 
-                                file={pdfUrl} 
-                                onLoadSuccess={handleDocumentLoad} 
-                                loading={<div className="h-[800px] flex items-center justify-center bg-white"><Loader2 className="animate-spin size-8 text-primary" /></div>}
-                            >
-                                <Page
-                                    pageNumber={1}
-                                    width={600 * scale}
-                                    renderAnnotationLayer={false}
-                                    renderTextLayer={false}
-                                />
-                            </Document>
+                            <canvas ref={canvasRef} className="block" />
 
                             {/* Existing Boxes */}
                             <div className="absolute inset-0 pointer-events-none">

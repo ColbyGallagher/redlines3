@@ -291,7 +291,7 @@ export function ReviewDetailsView({ review }: ReviewDetailsViewProps) {
   )
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-1 flex-col gap-6 p-6 pt-4 min-w-0">
       <Breadcrumb className="text-sm">
         <BreadcrumbList>
           <BreadcrumbItem>

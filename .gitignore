@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# syncfusion pdf viewer wasm resources (copied from node_modules)
+/public/ej2-pdfviewer-lib

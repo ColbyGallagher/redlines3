@@ -3,11 +3,16 @@
 import { FormEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { PDFDocument, rgb } from "pdf-lib"
-import { Document, Page, pdfjs } from "react-pdf"
-import "react-pdf/dist/Page/TextLayer.css"
-import "react-pdf/dist/Page/AnnotationLayer.css"
 import { AlertTriangle, Loader2, Hand, Type, MessageSquare, AlertCircle, LayoutGrid, PanelLeft } from "lucide-react"
 import { toast } from "sonner"
+
+import { SyncfusionPdfViewer, SyncfusionPdfViewerHandle } from "@/components/pdf/syncfusion-pdf-viewer"
+import * as pdfjs from "pdfjs-dist"
+
+// Initialize pdfjs worker
+if (typeof window !== "undefined") {
+  pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.mjs`
+}
 
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -32,10 +37,6 @@ import {
 import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
 
-pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-  "pdfjs-dist/build/pdf.worker.min.mjs",
-  import.meta.url
-).toString()
 
 type PDFMarkupViewerProps = {
   reviewId: string
@@ -93,31 +94,10 @@ export function PDFMarkupViewer({ reviewId, document, childDocuments = [], initi
   const panStartRef = useRef({ x: 0, y: 0, scrollLeft: 0, scrollTop: 0 })
   const [currentUser, setCurrentUser] = useState<{ first_name: string; last_name: string } | null>(null)
   const [placementCoords, setPlacementCoords] = useState<{ page: number; x: number; y: number } | null>(null)
-  const [scale, setScale] = useState(1.0) // This is the rendered scale (canvas size)
-  const [debouncedScale, setDebouncedScale] = useState(1.0)
-  const [zoomLevel, setZoomLevel] = useState(1.0) // This is the visual scale (instant)
-  const [pageAspectRatios, setPageAspectRatios] = useState<number[]>([])
   const [currentPage, setCurrentPage] = useState(1)
+  const [zoomLevel, setZoomLevel] = useState(1)
   const [sidebarTab, setSidebarTab] = useState<"properties" | "thumbnails">("properties")
-  const targetScrollRef = useRef<{ left: number; top: number } | null>(null)
-
-  // Apply synchronous scroll adjustment for zoom-to-pointer
-  useLayoutEffect(() => {
-    if (targetScrollRef.current && scrollRef.current) {
-      scrollRef.current.scrollLeft = targetScrollRef.current.left
-      scrollRef.current.scrollTop = targetScrollRef.current.top
-      targetScrollRef.current = null
-    }
-  }, [zoomLevel])
-
-  // Sync rendered scale with zoom level (debounced to avoid layout thrashing during zoom)
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setScale(zoomLevel)
-      setDebouncedScale(zoomLevel)
-    }, 150) // Shortened for faster quality transition
-    return () => clearTimeout(timer)
-  }, [zoomLevel])
+  const viewerRef = useRef<SyncfusionPdfViewerHandle>(null)
 
   const availableImportances = useMemo(() =>
     projectSettings?.importances?.length ? projectSettings.importances : DEFAULT_IMPORTANCES,
@@ -212,87 +192,20 @@ export function PDFMarkupViewer({ reviewId, document, childDocuments = [], initi
     loadUser()
   }, [])
 
+  // Syncfusion handles zoom natively, but we track it to scale our custom overlays
   useEffect(() => {
-    const scrollEl = scrollRef.current
-    if (!scrollEl) return
-
-    const handleWheel = (e: WheelEvent) => {
-      if (e.ctrlKey) {
-        e.preventDefault()
-        const delta = e.deltaY > 0 ? -0.1 : 0.1
-        
-        setZoomLevel((prev) => {
-          const next = Math.min(Math.max(prev + delta, 0.3), 5.0)
-          const finalNext = Math.round(next * 10) / 10
-          if (finalNext === prev) return prev
-
-          // Calculate exact zoom-to-pointer target scroll
-          const zoomFactor = finalNext / prev
-          const rect = scrollEl.getBoundingClientRect()
-          
-          const paddingX = scrollEl.clientWidth / 2
-          const paddingY = 40 // py-10 = 40px
-          
-          const mouseX = e.clientX - rect.left
-          const mouseY = e.clientY - rect.top
-          
-          // Distance from the un-padded START of the document content to the mouse
-          const contentX = mouseX + scrollEl.scrollLeft - paddingX
-          const contentY = mouseY + scrollEl.scrollTop - paddingY
-          
-          // To keep the point under the mouse exactly stationary, we add the expansion delta to scroll
-          targetScrollRef.current = {
-            left: scrollEl.scrollLeft + (contentX * (zoomFactor - 1)),
-            top: scrollEl.scrollTop + (contentY * (zoomFactor - 1))
-          }
-
-          return finalNext
-        })
-      }
-    }
-
-    scrollEl.addEventListener("wheel", handleWheel, { passive: false })
-    return () => scrollEl.removeEventListener("wheel", handleWheel)
+    // Current zoom-to-pointer logic is handled by Syncfusion
   }, [])
 
-  // Auto-scroll to initialPage or center initially
+  // Navigation handled by Syncfusion
   useEffect(() => {
-    if (initialPage && numPages >= initialPage && scrollRef.current) {
-      // Small delay to ensure pages are rendered
-      const timer = setTimeout(() => {
-        const pageElements = scrollRef.current?.querySelectorAll(".relative.border-b.bg-white")
-        if (pageElements && pageElements[initialPage - 1]) {
-          pageElements[initialPage - 1].scrollIntoView({ behavior: "smooth", block: "start" })
-        }
-      }, 500)
-      return () => clearTimeout(timer)
-    } else if (scrollRef.current && numPages > 0) {
-      // Initially center the document 
-      const timer = setTimeout(() => {
-        if (scrollRef.current) {
-          scrollRef.current.scrollLeft = (scrollRef.current.scrollWidth - scrollRef.current.clientWidth) / 2
-        }
-      }, 100)
-      return () => clearTimeout(timer)
+    if (initialPage && numPages >= initialPage && viewerRef.current) {
+        viewerRef.current.goToPage(initialPage)
     }
   }, [initialPage, numPages])
 
-  const handleDocumentLoad = async (pdf: { numPages: number; getPage: (n: number) => Promise<any> }) => {
-    setNumPages(pdf.numPages)
-    
-    // Fast-path: fetch the first page's actual aspect ratio
-    // This immediately eliminates white gaps without waiting for all 50+ pages to load
-    try {
-      const firstPage = await pdf.getPage(1)
-      const viewport = firstPage.getViewport({ scale: 1 })
-      const ratio = viewport.height / viewport.width
-      
-      // Pre-fill the array with the perfectly calculated ratio
-      setPageAspectRatios(Array(pdf.numPages).fill(ratio))
-    } catch (e) {
-      console.error("Failed to fetch initial aspect ratio", e)
-      setPageAspectRatios(Array(pdf.numPages).fill(1.41)) // Fallback to A4
-    }
+  const handleDocumentLoadSuccess = (pageCount: number) => {
+    setNumPages(pageCount)
   }
 
   const handleAddAnnotation = useCallback((event: React.MouseEvent<HTMLDivElement>, page: number) => {
@@ -632,7 +545,7 @@ export function PDFMarkupViewer({ reviewId, document, childDocuments = [], initi
               </button>
             </div>
           </div>
-          {sidebarTab === "properties" ? (
+          {sidebarTab === "properties" && (
             <div className="flex-1 overflow-auto p-4">
               {selectedAnnotation ? (
                 <div className="space-y-4">
@@ -734,67 +647,44 @@ export function PDFMarkupViewer({ reviewId, document, childDocuments = [], initi
                 </div>
               )}
             </div>
-          ) : (
+          )}
+          {sidebarTab === "thumbnails" && (
             <ThumbnailsPanel
               numPages={numPages}
               currentPage={currentPage}
               childDocuments={childDocuments}
               parentDocumentCode={document.code}
               pdfUrl={document.pdfUrl}
-              scrollRef={scrollRef}
+              viewerRef={viewerRef}
             />
           )}
         </aside>
 
-        {/* PDF Scroll Container */}
-        <div
-          ref={scrollRef}
-          className={cn(
-            "flex-1 overflow-auto bg-muted/40 transition-colors",
-            activeTool === "pan" && "cursor-grab",
-            isPanning && "cursor-grabbing select-none"
-          )}
-          onMouseDown={(e) => {
-            if (activeTool !== "pan" && e.button !== 1) return
-            setIsPanning(true)
-            panStartRef.current = {
-              x: e.clientX,
-              y: e.clientY,
-              scrollLeft: scrollRef.current?.scrollLeft || 0,
-              scrollTop: scrollRef.current?.scrollTop || 0,
-            }
-          }}
-          onMouseMove={(e) => {
-            if (!isPanning || !scrollRef.current) return
-            const dx = e.clientX - panStartRef.current.x
-            const dy = e.clientY - panStartRef.current.y
-            scrollRef.current.scrollLeft = panStartRef.current.scrollLeft - dx
-            scrollRef.current.scrollTop = panStartRef.current.scrollTop - dy
-          }}
-          onMouseUp={() => setIsPanning(false)}
-          onMouseLeave={() => setIsPanning(false)}
-        >
-          <div className="w-max px-[50%] py-10">
-            <Document file={document.pdfUrl} onLoadSuccess={handleDocumentLoad} loading={renderLoading(containerRef.current)}>
-              {Array.from({ length: numPages }, (_, index) => (
-                <VirtualizedPage
-                  key={`page_${index + 1}`}
-                  pageNumber={index + 1}
-                  scale={scale}
-                  debouncedScale={debouncedScale}
-                  annotations={annotations}
-                  activeTool={activeTool}
-                  scrollRef={scrollRef}
-                  aspectRatio={pageAspectRatios[index]}
-                  onAddAnnotation={handleAddAnnotation}
-                  onDeleteAnnotation={handleDeleteAnnotation}
-                  onSelectAnnotation={setSelectedAnnotationId}
-                  onVisible={setCurrentPage}
-                  zoomLevel={zoomLevel}
-                />
-              ))}
-            </Document>
-          </div>
+        {/* PDF Container */}
+        <div className="relative flex-1 bg-muted/10 overflow-hidden">
+          <SyncfusionPdfViewer
+            ref={viewerRef}
+            documentPath={document.pdfUrl}
+            onDocumentLoad={handleDocumentLoadSuccess}
+            onPageChange={setCurrentPage}
+            onZoomChange={setZoomLevel}
+            height="100%"
+            showToolbar={false}
+          />
+          
+          {/* Custom Annotation Overlay Layer - We render all page overlays 
+              but only the ones currently in Syncfusion's DOM will actually find a portal target */}
+          {Array.from({ length: numPages }, (_, index) => (
+            <SyncfusionPageOverlay
+              key={`page_overlay_${index + 1}`}
+              pageNumber={index + 1}
+              annotations={annotations}
+              activeTool={activeTool}
+              onAddAnnotation={handleAddAnnotation}
+              onDeleteAnnotation={handleDeleteAnnotation}
+              onSelectAnnotation={setSelectedAnnotationId}
+            />
+          ))}
         </div>
       </div>
       {/* 3. Bottom Bar */}
@@ -920,138 +810,56 @@ export function PDFMarkupViewer({ reviewId, document, childDocuments = [], initi
     </div>
   )
 }
-
-function VirtualizedPage({
+/**
+ * SyncfusionPageOverlay
+ * 
+ * This component handles the "bridge" between our React-based annotation system
+ * and Syncfusion's virtualized DOM. It finds the Syncfusion page element in the DOM
+ * and portals our AnnotationLayer into it.
+ */
+function SyncfusionPageOverlay({
   pageNumber,
-  scale,
-  debouncedScale,
   annotations,
   activeTool,
-  scrollRef,
-  aspectRatio,
   onAddAnnotation,
   onDeleteAnnotation,
   onSelectAnnotation,
-  onVisible,
-  zoomLevel,
 }: {
   pageNumber: number
-  scale: number
-  debouncedScale: number
   annotations: RealtimeAnnotation[]
   activeTool: "pan" | "issue"
-  scrollRef: React.RefObject<HTMLDivElement | null>
-  aspectRatio: number
   onAddAnnotation: (event: React.MouseEvent<HTMLDivElement>, page: number) => void
   onDeleteAnnotation: (id: string) => void
   onSelectAnnotation: (id: string | null) => void
-  onVisible: (page: number) => void
-  zoomLevel: number
 }) {
-  const [isVisible, setIsVisible] = useState(false)
-  const containerRef = useRef<HTMLDivElement>(null)
+  const [targetElement, setTargetElement] = useState<HTMLElement | null>(null)
 
-  // Observer 1: Controls rendering — wide margin to pre-load pages before they scroll into view
   useEffect(() => {
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        setIsVisible(entry.isIntersecting)
-      },
-      {
-        root: scrollRef.current,
-        threshold: 0.1,
-        rootMargin: "800px",
+    // Try to find the Syncfusion page container for this pageNumber.
+    // Syncfusion uses a 0-indexed ID pattern: syncfusion-pdf-viewer_pageContainer_N
+    const interval = setInterval(() => {
+      const el = document.getElementById(`syncfusion-pdf-viewer_pageContainer_${pageNumber - 1}`)
+      if (el && el !== targetElement) {
+        setTargetElement(el)
+        clearInterval(interval)
       }
-    )
+    }, 500)
 
-    if (containerRef.current) {
-      observer.observe(containerRef.current)
-    }
+    return () => clearInterval(interval)
+  }, [pageNumber, targetElement])
 
-    return () => observer.disconnect()
-  }, [scrollRef, pageNumber])
+  if (!targetElement) return null
 
-  // Observer 2: Tracks "current page" — tight margin that only fires when a page
-  // crosses the center 10% strip of the viewport, so exactly one page owns the indicator.
-  useEffect(() => {
-    const pageObserver = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          onVisible(pageNumber)
-        }
-      },
-      {
-        root: scrollRef.current,
-        threshold: 0,
-        rootMargin: "-45% 0px -45% 0px",
-      }
-    )
-
-    if (containerRef.current) {
-      pageObserver.observe(containerRef.current)
-    }
-
-    return () => pageObserver.disconnect()
-  }, [scrollRef, onVisible, pageNumber])
-
-  const calculatedHeight = 900 * zoomLevel * (aspectRatio || 1.41)
-
-  return (
-    <div
-      ref={containerRef}
-      className={cn(
-        "relative border-b bg-white",
-        !isVisible && "bg-muted/5"
-      )}
-      style={{
-        width: 900 * zoomLevel,
-        minHeight: calculatedHeight,
-      }}
-    >
-      {isVisible ? (
-        <>
-          <div
-            className="absolute inset-0 origin-top-left"
-            style={{ transform: `scale(${(900 * zoomLevel) / 2000})` }}
-          >
-            <Page
-              pageNumber={pageNumber}
-              width={2000} // Static high-res render completely prevents react-pdf scale-flashes!
-              renderAnnotationLayer={false}
-              renderTextLayer={true} // Enabled for crisp vector text
-              devicePixelRatio={Math.max(2, window.devicePixelRatio)} // High DPI rendering
-              className="select-none"
-              onRenderTextLayerError={(error: any) => {
-                if (error.name !== "AbortException") console.error("TextLayer error:", error)
-              }}
-              onGetTextError={(error: any) => {
-                if (error.name !== "AbortException") console.error("GetText error:", error)
-              }}
-              loading={
-                <div
-                  style={{ width: 2000, height: 2000 * (aspectRatio || 1.41) }}
-                  className="flex items-center justify-center bg-white"
-                >
-                  <Loader2 className="h-20 w-20 animate-spin text-muted-foreground/20" />
-                </div>
-              }
-            />
-          </div>
-          <AnnotationLayer
-            pageNumber={pageNumber}
-            annotations={annotations}
-            activeTool={activeTool}
-            onAddAnnotation={onAddAnnotation}
-            onDeleteAnnotation={onDeleteAnnotation}
-            onSelectAnnotation={onSelectAnnotation}
-          />
-        </>
-      ) : (
-        <div style={{ width: 900 * scale, height: calculatedHeight }} className="flex items-center justify-center">
-          <span className="text-xs text-muted-foreground/20">Page {pageNumber}</span>
-        </div>
-      )}
-    </div>
+  return createPortal(
+    <AnnotationLayer
+      pageNumber={pageNumber}
+      annotations={annotations}
+      activeTool={activeTool}
+      onAddAnnotation={onAddAnnotation}
+      onDeleteAnnotation={onDeleteAnnotation}
+      onSelectAnnotation={onSelectAnnotation}
+    />,
+    targetElement
   )
 }
 
@@ -1061,24 +869,22 @@ function ThumbnailsPanel({
   childDocuments,
   parentDocumentCode,
   pdfUrl,
-  scrollRef,
+  viewerRef,
 }: {
   numPages: number
   currentPage: number
   childDocuments: ReviewDocument[]
   parentDocumentCode: string
   pdfUrl: string
-  scrollRef: React.RefObject<HTMLDivElement | null>
+  viewerRef: React.RefObject<SyncfusionPdfViewerHandle | null>
 }) {
   const thumbnailListRef = useRef<HTMLDivElement>(null)
 
   const scrollToPage = useCallback((pageNumber: number) => {
-    if (!scrollRef.current) return
-    const pageElements = scrollRef.current.querySelectorAll(".relative.border-b.bg-white")
-    if (pageElements && pageElements[pageNumber - 1]) {
-      pageElements[pageNumber - 1].scrollIntoView({ behavior: "smooth", block: "start" })
+    if (viewerRef.current) {
+      viewerRef.current.goToPage(pageNumber)
     }
-  }, [scrollRef])
+  }, [viewerRef])
 
   // Auto-scroll the thumbnail list to keep current page visible
   useEffect(() => {
@@ -1099,8 +905,7 @@ function ThumbnailsPanel({
 
   return (
     <div ref={thumbnailListRef} className="flex-1 overflow-auto p-3">
-      <Document file={pdfUrl} loading={null}>
-        <div className="space-y-3">
+      <div className="space-y-3">
           {Array.from({ length: numPages }, (_, index) => {
             const pageNum = index + 1
             const isActive = currentPage === pageNum
@@ -1121,18 +926,8 @@ function ThumbnailsPanel({
                     : "border-border hover:border-primary/40"
                 )}
               >
-                <div className="relative overflow-hidden rounded">
-                  <Page
-                    pageNumber={pageNum}
-                    width={200}
-                    renderAnnotationLayer={false}
-                    renderTextLayer={false}
-                    loading={
-                      <div className="flex items-center justify-center bg-muted/20" style={{ width: 200, height: 140 }}>
-                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground/40" />
-                      </div>
-                    }
-                  />
+                <div className="relative overflow-hidden rounded bg-muted/10">
+                   <ThumbnailPage pdfUrl={pdfUrl} pageNumber={pageNum} />
                   {/* Page number badge */}
                   <div className={cn(
                     "absolute top-1.5 left-1.5 rounded px-1.5 py-0.5 text-[10px] font-bold shadow-sm",
@@ -1161,8 +956,59 @@ function ThumbnailsPanel({
               </button>
             )
           })}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Renders a single PDF page as a thumbnail using pdfjs-dist.
+ */
+function ThumbnailPage({ pdfUrl, pageNumber }: { pdfUrl: string; pageNumber: number }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let active = true
+    const render = async () => {
+      try {
+        const loadingTask = pdfjs.getDocument(pdfUrl)
+        const pdf = await loadingTask.promise
+        if (!active) return
+
+        const page = await pdf.getPage(pageNumber)
+        if (!active || !canvasRef.current) return
+
+        const canvas = canvasRef.current
+        const context = canvas.getContext("2d")
+        if (!context) return
+
+        const viewport = page.getViewport({ scale: 0.2 }) // Small scale for thumbnails
+        canvas.height = viewport.height
+        canvas.width = viewport.width
+
+        const renderContext: any = {
+          canvasContext: context,
+          viewport: viewport,
+        }
+        await (page as any).render(renderContext).promise
+        if (active) setLoading(false)
+      } catch (err) {
+        if (active) console.error("Thumbnail render error:", err)
+      }
+    }
+    render()
+    return () => { active = false }
+  }, [pdfUrl, pageNumber])
+
+  return (
+    <div className="relative aspect-[1/1.41] w-full flex items-center justify-center">
+      {loading && (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground/40" />
         </div>
-      </Document>
+      )}
+      <canvas ref={canvasRef} className={cn("w-full h-auto block", loading ? "opacity-0" : "opacity-100 transition-opacity")} />
     </div>
   )
 }
