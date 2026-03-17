@@ -25,17 +25,25 @@ type ProjectSettingsSheetProps = {
   trigger?: ReactNode
 }
 
+type Milestone = {
+  id: string
+  name: string
+  description?: string
+}
+
 type ProjectSettings = {
-  availableMilestones: string[]
+  availableMilestones: Milestone[]
   selectedMilestones: string[]
   titleblockTemplateUrl?: string
   documentNamingConvention: string
   documentCodeLocation: string
-  statuses: string[]
-  importances: string[]
-  disciplines: string[]
-  states: string[]
-  suitabilities: string[]
+  statuses: any[]
+  importances: any[]
+  disciplines: any[]
+  states: any[]
+  suitabilities: any[]
+  packages: any[]
+  classifications: any[]
   defaultReviewTimes: { stage: string; days: number }[]
   defaultResponsePeriods: { role: string; days: number }[]
 }
@@ -45,14 +53,17 @@ type ProjectSettingsResponse = {
 }
 
 type SettingsFormState = {
+  availableMilestones: any[]
   selectedMilestones: Set<string>
   documentNamingConvention: string
   documentCodeLocation: string
-  statuses: string[]
-  importances: string[]
-  disciplines: string[]
-  states: string[]
-  suitabilities: string[]
+  statuses: any[]
+  importances: any[]
+  disciplines: any[]
+  states: any[]
+  suitabilities: any[]
+  packages: any[]
+  classifications: any[]
   defaultReviewTimes: { stage: string; days: number }[]
   defaultResponsePeriods: { role: string; days: number }[]
   titleblockTemplateUrl?: string
@@ -61,6 +72,7 @@ type SettingsFormState = {
 
 function createInitialFormState(settings: ProjectSettings): SettingsFormState {
   return {
+    availableMilestones: [...settings.availableMilestones],
     selectedMilestones: new Set(settings.selectedMilestones),
     documentNamingConvention: settings.documentNamingConvention,
     documentCodeLocation: settings.documentCodeLocation,
@@ -69,6 +81,8 @@ function createInitialFormState(settings: ProjectSettings): SettingsFormState {
     disciplines: [...settings.disciplines],
     states: [...settings.states],
     suitabilities: [...settings.suitabilities],
+    packages: [...settings.packages],
+    classifications: [...settings.classifications],
     defaultReviewTimes: settings.defaultReviewTimes.map((entry) => ({ ...entry })),
     defaultResponsePeriods: settings.defaultResponsePeriods.map((entry) => ({ ...entry })),
     titleblockTemplateUrl: settings.titleblockTemplateUrl,
@@ -321,15 +335,15 @@ export function ProjectSettingsSheet({ projectId, trigger }: ProjectSettingsShee
                       {settings.availableMilestones.length ? (
                         settings.availableMilestones.map((milestone) => (
                           <label
-                            key={milestone}
+                            key={milestone.id}
                             className="border-border hover:border-primary/50 flex items-start gap-3 rounded-lg border bg-card p-3 transition"
                           >
                             <Checkbox
-                              checked={formState.selectedMilestones.has(milestone)}
-                              onCheckedChange={(checked) => toggleMilestone(milestone, Boolean(checked))}
+                              checked={formState.selectedMilestones.has(milestone.name)}
+                              onCheckedChange={(checked) => toggleMilestone(milestone.name, Boolean(checked))}
                             />
                             <div>
-                              <p className="font-medium">{milestone}</p>
+                              <p className="font-medium">{milestone.name}</p>
                               <p className="text-muted-foreground text-xs">Enable or disable this milestone for the team.</p>
                             </div>
                           </label>
@@ -384,36 +398,6 @@ export function ProjectSettingsSheet({ projectId, trigger }: ProjectSettingsShee
                     </div>
                   </section>
 
-                  <Separator />
-
-                  <section className="space-y-4">
-                    <header className="space-y-1">
-                      <h2 className="text-lg font-semibold">Classification options</h2>
-                      <p className="text-muted-foreground text-sm">Control the lists that reviewers use when classifying documents and issues.</p>
-                    </header>
-                    <div className="grid gap-6 md:grid-cols-2">
-                      <div className="space-y-2">
-                        <Label>Statuses</Label>
-                        <SelectableList entries={formState.statuses} onChange={(entries) => setFormState((prev) => (prev ? { ...prev, statuses: entries } : prev))} />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Importance</Label>
-                        <SelectableList entries={formState.importances} onChange={(entries) => setFormState((prev) => (prev ? { ...prev, importances: entries } : prev))} />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Discipline</Label>
-                        <SelectableList entries={formState.disciplines} onChange={(entries) => setFormState((prev) => (prev ? { ...prev, disciplines: entries } : prev))} />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>State</Label>
-                        <SelectableList entries={formState.states} onChange={(entries) => setFormState((prev) => (prev ? { ...prev, states: entries } : prev))} />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Suitability</Label>
-                        <SelectableList entries={formState.suitabilities} onChange={(entries) => setFormState((prev) => (prev ? { ...prev, suitabilities: entries } : prev))} />
-                      </div>
-                    </div>
-                  </section>
 
                   <Separator />
 

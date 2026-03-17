@@ -104,8 +104,9 @@ export function IssuesTable({ issues, summary }: IssuesTableProps) {
           <CreateIssueDialog
             projectId={summary.project.id}
             reviews={summary.reviews}
-            disciplines={summary.settings.disciplines}
-            importances={summary.settings.importances}
+            settings={summary.settings}
+            members={summary.members}
+            documents={summary.allReviewDocuments}
           />
           <div className="relative">
             <Search className="text-muted-foreground absolute left-3 top-1/2 size-4 -translate-y-1/2" />

@@ -3,6 +3,7 @@ import Link from "next/link"
 import { ChevronLeft } from "lucide-react"
 
 import { ProjectSettingsForm } from "@/components/projects/project-settings-form"
+import { IssueFieldsSettings } from "@/components/projects/issue-fields-settings"
 import { getProjectSummaryById } from "@/lib/data/projects"
 import { Button } from "@/components/ui/button"
 
@@ -20,6 +21,8 @@ export default async function ProjectSettingsPage({ params }: ProjectSettingsPag
         redirect("/projects")
     }
 
+    const { settings } = summary
+
     return (
         <div className="flex flex-1 flex-col">
             <header className="border-b bg-card px-6 py-4">
@@ -33,14 +36,31 @@ export default async function ProjectSettingsPage({ params }: ProjectSettingsPag
                     <div>
                         <h1 className="text-xl font-bold tracking-tight">Project Settings</h1>
                         <p className="text-muted-foreground text-sm">
-                            Configure milestones and standards for {summary.project.projectName}
+                            Configure standards for {summary.project.projectName}
                         </p>
                     </div>
                 </div>
             </header>
-            <main className="flex-1 overflow-y-auto">
-                <div className="mx-auto max-w-4xl py-8">
+            <main className="flex-1 overflow-y-auto pb-12">
+                <div className="mx-auto max-w-4xl py-8 space-y-8 px-6">
                     <ProjectSettingsForm projectId={id} />
+                    
+                    <IssueFieldsSettings 
+                        projectId={id}
+                        milestones={summary.settings.availableMilestones.map((m) => ({ 
+                            id: m.id,
+                            project_id: id,
+                            name: m.name,
+                            description: m.description || null,
+                            is_selected: summary.settings.selectedMilestones.includes(m.name)
+                        }))}
+                        disciplines={settings.disciplines}
+                        importances={settings.importances}
+                        states={settings.states}
+                        statuses={settings.statuses}
+                        packages={settings.packages}
+                        classifications={settings.classifications}
+                    />
                 </div>
             </main>
         </div>

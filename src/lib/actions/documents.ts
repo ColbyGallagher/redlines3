@@ -98,64 +98,79 @@ export async function deleteDocument(documentId: string, reviewId: string, delet
     const supabase = await createServerSupabaseClient()
 
     try {
-        // 1. Get document details for storage path
+        // 1. Get document details for storage path and child discovery
         const { data: document, error: fetchError } = await supabase
             .from("documents")
-            .select("pdf_url")
+            .select("id, pdf_url")
             .eq("id", documentId)
-            .single() as { data: { pdf_url: string } | null, error: any }
+            .single() as { data: { id: string, pdf_url: string } | null, error: any }
 
         if (fetchError || !document) {
             console.error("Fetch error:", fetchError)
             return { message: "Document not found" }
         }
 
-        // 2. Conditionally delete or nullify annotations and issues
-        if (deleteIssues) {
-            // Delete annotations
-            const { error: annError } = await supabase
-                .from("annotations")
-                .delete()
-                .eq("document_id", documentId)
+        // 2. Find and handle child documents (e.g., individual pages from a set)
+        const { data: children, error: childrenError } = await supabase
+            .from("documents")
+            .select("id, pdf_url")
+            .eq("parent_id", documentId) as { data: { id: string, pdf_url: string }[] | null, error: any }
 
-            if (annError) {
-                console.error("Annotation deletion error:", annError)
-            }
+        if (childrenError) {
+            console.error("Error fetching child documents:", childrenError)
+        }
 
-            // Delete issues
-            const { error: issueError } = await supabase
-                .from("issues")
-                .delete()
-                .eq("document_id", documentId)
+        const allDocumentIds = [documentId, ...(children?.map(c => c.id) || [])]
+        const allPdfUrls = [document.pdf_url, ...(children?.map(c => c.pdf_url) || [])].filter(Boolean)
 
-            if (issueError) {
-                console.error("Issue deletion error:", issueError)
-            }
-        } else {
-            // Nullify relationships instead of deleting
-            const { error: annNullError } = await (supabase
-                .from("annotations" as any) as any)
-                .update({ document_id: null })
-                .eq("document_id", documentId)
+        // 3. Conditionally delete or nullify annotations and issues for all related documents
+        for (const docId of allDocumentIds) {
+            if (deleteIssues) {
+                // Delete annotations
+                const { error: annError } = await supabase
+                    .from("annotations")
+                    .delete()
+                    .eq("document_id", docId)
 
-            if (annNullError) {
-                console.error("Annotation nullification error:", annNullError)
-            }
+                if (annError) {
+                    console.error(`Annotation deletion error for ${docId}:`, annError)
+                }
 
-            const { error: issueNullError } = await (supabase
-                .from("issues" as any) as any)
-                .update({ document_id: null })
-                .eq("document_id", documentId)
+                // Delete issues
+                const { error: issueError } = await supabase
+                    .from("issues")
+                    .delete()
+                    .eq("document_id", docId)
 
-            if (issueNullError) {
-                console.error("Issue nullification error:", issueNullError)
+                if (issueError) {
+                    console.error(`Issue deletion error for ${docId}:`, issueError)
+                }
+            } else {
+                // Nullify relationships
+                const { error: annNullError } = await (supabase
+                    .from("annotations" as any) as any)
+                    .update({ document_id: null })
+                    .eq("document_id", docId)
+
+                if (annNullError) {
+                    console.error(`Annotation nullification error for ${docId}:`, annNullError)
+                }
+
+                const { error: issueNullError } = await (supabase
+                    .from("issues" as any) as any)
+                    .update({ document_id: null })
+                    .eq("document_id", docId)
+
+                if (issueNullError) {
+                    console.error(`Issue nullification error for ${docId}:`, issueNullError)
+                }
             }
         }
 
-        // 3. Delete from Storage
-        if (document.pdf_url) {
+        // 4. Delete from Storage for parent and all children
+        for (const pdfUrl of allPdfUrls) {
             try {
-                const parts = document.pdf_url.split("/storage/v1/object/public/documents/")
+                const parts = pdfUrl.split("/storage/v1/object/public/documents/")
                 if (parts.length === 2) {
                     const storagePath = parts[1]
                     await supabase.storage.from("documents").remove([storagePath])
@@ -165,7 +180,19 @@ export async function deleteDocument(documentId: string, reviewId: string, delet
             }
         }
 
-        // 4. Delete from Database
+        // 5. Delete from Database (Children first due to FK constraint)
+        if (children && children.length > 0) {
+            const { error: childrenDeleteError } = await supabase
+                .from("documents")
+                .delete()
+                .in("id", children.map(c => c.id))
+            
+            if (childrenDeleteError) {
+                console.error("Error deleting child documents:", childrenDeleteError)
+                return { message: "Failed to delete child documents: " + childrenDeleteError.message }
+            }
+        }
+
         const { error: deleteError } = await supabase
             .from("documents")
             .delete()

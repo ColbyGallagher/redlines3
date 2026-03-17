@@ -1,7 +1,4 @@
-// Syncfusion license registration
-import { registerLicense } from "@syncfusion/ej2-base";
-
-registerLicense(process.env.NEXT_PUBLIC_SYNCFUSION_LICENSE_KEY || "");
+import { SyncfusionLicense } from "@/components/syncfusion-license"
 
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
@@ -45,6 +42,7 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <AppShell>
+            <SyncfusionLicense />
             <div id="annotation-popovers" className="fixed left-0 top-0 z-[9999]" />
             {children}
             <Toaster />

@@ -1,8 +1,9 @@
-﻿import "server-only"
+import "server-only"
 
 import { NextResponse } from "next/server"
 
 import { createIssueFromAnnotations } from "@/lib/actions/issues"
+import { createServerSupabaseClient } from "@/lib/supabase/server"
 
 type ConvertAnnotationRequestBody = {
     projectId?: unknown
@@ -11,6 +12,9 @@ type ConvertAnnotationRequestBody = {
     annotationIds?: unknown
     discipline?: unknown
     importance?: unknown
+    state?: unknown
+    status?: unknown
+    milestone?: unknown
     comment?: unknown
     pageNumber?: unknown
 }
@@ -78,6 +82,8 @@ export const runtime = "nodejs"
 
 export async function POST(request: Request) {
     let payload: ConvertAnnotationRequestBody
+    const supabase = await createServerSupabaseClient()
+    const { data: { user } } = await supabase.auth.getUser()
 
     try {
         payload = (await request.json()) as ConvertAnnotationRequestBody
@@ -94,6 +100,9 @@ export async function POST(request: Request) {
         const annotationIds = normalizeAnnotationIds(payload.annotationIds)
         const pageNumber = normalizePageNumber(payload.pageNumber)
         const comment = normalizeOptionalString(payload.comment)
+        const milestone = normalizeOptionalString(payload.milestone)
+        const state = normalizeOptionalString(payload.state)
+        const status = normalizeOptionalString(payload.status)
 
         const result = await createIssueFromAnnotations({
             projectId,
@@ -104,6 +113,10 @@ export async function POST(request: Request) {
             importance: importance as "High" | "Medium" | "Low",
             comment,
             pageNumber,
+            milestone,
+            state,
+            status,
+            userId: user?.id,
         })
 
         if (result.message !== "Success" || !result.issue) {

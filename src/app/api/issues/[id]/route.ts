@@ -1,4 +1,4 @@
-﻿import "server-only"
+import "server-only"
 
 import { NextRequest, NextResponse } from "next/server"
 
@@ -20,9 +20,22 @@ export async function GET(_request: NextRequest, context: RouteContext) {
   const supabase = await createServerSupabaseClient()
   const { data, error } = await (supabase
     .from("issues")
-    .select(
-      "id, issue_number, discipline, importance, status, date_created, date_modified, created_by_user:users!created_by_user_id(first_name,last_name)"
-    )
+    .select(`
+      id, 
+      issue_number, 
+      discipline, 
+      discipline_old,
+      importance, 
+      importance_old,
+      status, 
+      status_old,
+      date_created, 
+      date_modified, 
+      project_disciplines!discipline(name),
+      project_importances!importance(name),
+      project_statuses!status(name),
+      created_by_user:users!created_by_user_id(first_name,last_name)
+    `)
     .eq("id", id)
     .maybeSingle() as any)
 
@@ -44,9 +57,9 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     issue: {
       id: data.id,
       issueNumber: data.issue_number ?? null,
-      discipline: data.discipline ?? null,
-      importance: data.importance ?? null,
-      status: data.status ?? null,
+      discipline: data.project_disciplines?.name ?? data.discipline_old ?? data.discipline ?? null,
+      importance: data.project_importances?.name ?? data.importance_old ?? data.importance ?? null,
+      status: data.project_statuses?.name ?? data.status_old ?? data.status ?? null,
       dateCreated: data.date_created ?? null,
       dateModified: data.date_modified ?? null,
       createdBy,

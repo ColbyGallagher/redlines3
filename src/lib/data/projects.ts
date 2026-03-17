@@ -1,7 +1,7 @@
 import "server-only"
 
 import { createServerSupabaseClient } from "@/lib/supabase/server"
-import type { Database, ProjectMilestone, ProjectStatus, ProjectImportance, ProjectDiscipline, ProjectState, ProjectSuitability, ProjectReviewStage, ProjectResponseRole } from "@/lib/db/types"
+import type { Database, ProjectMilestone, ProjectStatus, ProjectImportance, ProjectDiscipline, ProjectState, ProjectSuitability, ProjectReviewStage, ProjectResponseRole, ProjectPackage, ProjectClassification } from "@/lib/db/types"
 import type { ReviewUser } from "./reviews"
 import { formatName, toTitleCaseFallback } from "@/lib/utils/user-utils"
 
@@ -138,6 +138,7 @@ export type ProjectMetrics = {
 }
 
 export type Milestone = {
+  id: string
   name: string
   description?: string
 }
@@ -148,11 +149,13 @@ export type ProjectSettings = {
   titleblockTemplateUrl?: string
   documentNamingConvention: string
   documentCodeLocation: string
-  statuses: string[]
-  importances: string[]
-  disciplines: string[]
-  states: string[]
-  suitabilities: string[]
+  statuses: ProjectStatus[]
+  importances: ProjectImportance[]
+  disciplines: ProjectDiscipline[]
+  states: ProjectState[]
+  suitabilities: ProjectSuitability[]
+  packages: ProjectPackage[]
+  classifications: ProjectClassification[]
   defaultReviewTimes: { stage: string; days: number }[]
   defaultResponsePeriods: { role: string; days: number }[]
 }
@@ -178,6 +181,7 @@ export type ProjectSummary = {
   insights: ProjectInsight[]
   lastUpdated: string
   settings: ProjectSettings
+  allReviewDocuments: { id: string; name: string; code: string | null }[]
 }
 
 type PrimaryDueDateType = "client" | "consultant" | "reply"
@@ -187,7 +191,7 @@ type PrimaryDueDate = {
   type: PrimaryDueDateType
 }
 
-function mapReview(row: ReviewWithRelations, project: ProjectRow): NormalizedReview {
+function mapReview(row: ReviewWithRelations, project: ProjectWithRelations): NormalizedReview {
   return {
     id: row.id,
     reviewName: row.review_name,
@@ -216,21 +220,28 @@ function mapReview(row: ReviewWithRelations, project: ProjectRow): NormalizedRev
       fileSize: document.file_size ?? null,
       uploadedAt: document.uploaded_at ?? null,
     })),
-    issues: (row.issues ?? []).map((issue) => ({
-      id: issue.id,
-      issueNumber: issue.issue_number,
-      status: issue.status ?? "Open",
-      importance: issue.importance ?? "Medium",
-      discipline: issue.discipline ?? "General",
-      dateCreated: issue.date_created ?? null,
-      dateModified: issue.date_modified ?? issue.date_created ?? null,
-      documentId: issue.document_id ?? null,
-      reviewId: issue.review_id,
-      projectId: issue.project_id,
-      comment: issue.comment ?? null,
-      commentCoordinates: issue.comment_coordinates ?? null,
-      pageNumber: issue.page_number ?? null,
-    })),
+    issues: (row.issues ?? []).map((issue) => {
+      // Resolve UUIDs to names if possible
+      const statusObj = (project.project_statuses ?? []).find(s => s.id === issue.status)
+      const importanceObj = (project.project_importances ?? []).find(i => i.id === issue.importance)
+      const disciplineObj = (project.project_disciplines ?? []).find(d => d.id === issue.discipline)
+
+      return {
+        id: issue.id,
+        issueNumber: issue.issue_number,
+        status: statusObj?.name ?? issue.status_old ?? issue.status ?? "Open",
+        importance: importanceObj?.name ?? issue.importance_old ?? issue.importance ?? "Medium",
+        discipline: disciplineObj?.name ?? issue.discipline_old ?? issue.discipline ?? "General",
+        dateCreated: issue.date_created ?? null,
+        dateModified: issue.date_modified ?? issue.date_created ?? null,
+        documentId: issue.document_id ?? null,
+        reviewId: issue.review_id,
+        projectId: issue.project_id,
+        comment: issue.comment ?? null,
+        commentCoordinates: issue.comment_coordinates ?? null,
+        pageNumber: issue.page_number ?? null,
+      }
+    }),
     lastUpdated: row.updated_at ?? row.created_at ?? null,
   }
 }
@@ -262,7 +273,7 @@ function getPrimaryDueDate(review: NormalizedReview): PrimaryDueDate | undefined
   return validDates[0]
 }
 
-function calculateReviewSummaries(today: Date, reviews: NormalizedReview[]): ProjectReviewSummary[] {
+function calculateReviewSummaries(today: Date, reviews: NormalizedReview[], projectStatuses: ProjectStatus[]): ProjectReviewSummary[] {
   return reviews.map((review) => {
     const primaryDueDate = getPrimaryDueDate(review)
     const dueDate = primaryDueDate?.date
@@ -282,7 +293,7 @@ function calculateReviewSummaries(today: Date, reviews: NormalizedReview[]): Pro
       id: review.id,
       reviewName: review.reviewName,
       milestone: review.milestone,
-      status: review.status,
+      status: (projectStatuses ?? []).find(s => s.id === review.status)?.name ?? review.status,
       dueDate: dueDateIso,
       dueDateType: primaryDueDate?.type,
       daysUntilDue,
@@ -398,22 +409,16 @@ function buildInsights(projectId: string, reviews: ProjectReviewSummary[], issue
   return insights
 }
 
-function deriveSettings(reviews: ProjectReviewSummary[], issues: ProjectIssueSummary[]): ProjectSettings {
-  const statuses = Array.from(new Set(reviews.map((review) => review.status))).filter(Boolean)
-  const importances = Array.from(new Set(issues.map((issue) => issue.importance))).filter(Boolean)
-  const disciplines = Array.from(new Set(issues.map((issue) => issue.discipline))).filter(Boolean)
+function deriveSettings(project: ProjectWithRelations): ProjectSettings {
+  const availableMilestones = (project.project_milestones ?? []).map(m => ({
+    id: m.id,
+    name: m.name,
+    description: m.description ?? undefined
+  }))
 
-  const availableMilestones = Array.from(new Set(reviews.map((review) => review.milestone)))
-    .filter(Boolean)
-    .map(name => ({ name }))
-
-  const selectedMilestones = Array.from(
-    new Set(
-      reviews
-        .filter((review) => ACTIVE_REVIEW_STATUSES.has(review.status))
-        .map((review) => review.milestone),
-    ),
-  ).filter(Boolean)
+  const selectedMilestones = (project.project_milestones ?? [])
+    .filter(m => m.is_selected)
+    .map(m => m.name)
 
   return {
     availableMilestones,
@@ -421,21 +426,15 @@ function deriveSettings(reviews: ProjectReviewSummary[], issues: ProjectIssueSum
     titleblockTemplateUrl: undefined,
     documentNamingConvention: "<project>-<discipline>-<drawingNumber>-<revision>",
     documentCodeLocation: "Top right corner",
-    statuses: statuses.length ? statuses : ["Draft", "In Review", "Awaiting Client", "Approved", "Flagged"],
-    importances: importances.length ? importances : ["Low", "Medium", "High"],
-    disciplines: disciplines.length
-      ? disciplines
-      : ["Architectural", "Mechanical", "Electrical", "Structural", "Interior"],
-    states: ["For Review", "For Approval", "For Construction", "As Built"],
-    suitabilities: ["S1 - Suitable for coordination", "S2 - Suitable for information", "S3 - Suitable for coordination"],
-    defaultReviewTimes: [
-      { stage: "Client SME", days: 5 },
-      { stage: "Consultant", days: 7 },
-    ],
-    defaultResponsePeriods: [
-      { role: "Design Team", days: 10 },
-      { role: "Client", days: 15 },
-    ],
+    statuses: project.project_statuses ?? [],
+    importances: project.project_importances ?? [],
+    disciplines: project.project_disciplines ?? [],
+    states: project.project_states ?? [],
+    suitabilities: project.project_suitabilities ?? [],
+    packages: (project as any).project_packages ?? [],
+    classifications: (project as any).project_classifications ?? [],
+    defaultReviewTimes: (project.project_review_stages ?? []).map(s => ({ stage: s.stage_name, days: s.days })),
+    defaultResponsePeriods: (project.project_response_roles ?? []).map(r => ({ role: r.role_name, days: r.days })),
   }
 }
 
@@ -490,59 +489,16 @@ function mapProjectSummary(project: ProjectWithRelations): ProjectSummary {
   const reviews = (project.reviews ?? []).map((review) => mapReview(review, project))
   const today = new Date()
 
-  const reviewSummaries = calculateReviewSummaries(today, reviews)
+  const reviewSummaries = calculateReviewSummaries(today, reviews, project.project_statuses ?? [])
   const issueSummaries = calculateIssueSummaries(today, reviews)
   const metrics = calculateMetrics(reviewSummaries, issueSummaries)
   const insights = buildInsights(project.id, reviewSummaries, issueSummaries)
   const lastUpdated = computeLastUpdated(reviews, project.updated_at ?? project.created_at)
 
-  // 1. Start with derived defaults
-  const settings: ProjectSettings = deriveSettings(reviewSummaries, issueSummaries)
+  // 1. Get settings (from defaults or database)
+  const settings: ProjectSettings = deriveSettings(project)
 
-  // 2. Overwrite with persisted values from normalized tables if they exist
-  if (project.project_milestones?.length) {
-    settings.availableMilestones = project.project_milestones.map(m => ({
-      name: m.name,
-      description: m.description ?? undefined
-    }))
-    settings.selectedMilestones = project.project_milestones
-      .filter(m => m.is_selected)
-      .map(m => m.name)
-  }
-
-  if (project.project_statuses?.length) {
-    settings.statuses = project.project_statuses.map(s => s.name)
-  }
-
-  if (project.project_importances?.length) {
-    settings.importances = project.project_importances.map(i => i.name)
-  }
-
-  if (project.project_disciplines?.length) {
-    settings.disciplines = project.project_disciplines.map(d => d.name)
-  }
-
-  if (project.project_states?.length) {
-    settings.states = project.project_states.map(s => s.name)
-  }
-
-  if (project.project_suitabilities?.length) {
-    settings.suitabilities = project.project_suitabilities.map(s => s.name)
-  }
-
-  if (project.project_review_stages?.length) {
-    settings.defaultReviewTimes = project.project_review_stages.map(s => ({
-      stage: s.stage_name,
-      days: s.days
-    }))
-  }
-
-  if (project.project_response_roles?.length) {
-    settings.defaultResponsePeriods = project.project_response_roles.map(r => ({
-      role: r.role_name,
-      days: r.days
-    }))
-  }
+  // 2. Apply single-value settings from the projects.settings JSONB column if they exist
 
   // 3. Apply single-value settings from the projects.settings JSONB column if they exist
   const dbSettings = project.settings as any
@@ -569,6 +525,11 @@ function mapProjectSummary(project: ProjectWithRelations): ProjectSummary {
     insights,
     lastUpdated,
     settings,
+    allReviewDocuments: reviews.flatMap(r => r.documents.map(d => ({
+      id: d.id,
+      name: d.documentName,
+      code: d.documentCode ?? null
+    }))),
   }
 }
 
@@ -577,7 +538,7 @@ export async function getProjectSummaries(): Promise<ProjectSummary[]> {
     const supabase = await createServerSupabaseClient()
     const { data, error } = await supabase
       .from("projects")
-      .select("*, reviews(*, documents(*), issues(*)), project_milestones(*), project_statuses(*), project_importances(*), project_disciplines(*), project_states(*), project_suitabilities(*), project_review_stages(*), project_response_roles(*), project_users(*, user:users(*), roles:roles(*))")
+      .select("*, reviews(*, documents(*), issues(*)), project_milestones(*), project_statuses(*), project_importances(*), project_disciplines(*), project_states(*), project_suitabilities(*), project_review_stages(*), project_response_roles(*), project_users(*, user:users(*), roles:roles(*)), project_packages(*), project_classifications(*)")
       .order("project_name")
 
     if (error) {
@@ -598,7 +559,7 @@ export async function getProjectSummaryById(projectId: string): Promise<ProjectS
     const supabase = await createServerSupabaseClient()
     const { data, error } = await supabase
       .from("projects")
-      .select("*, reviews(*, documents(*), issues(*)), project_milestones(*), project_statuses(*), project_importances(*), project_disciplines(*), project_states(*), project_suitabilities(*), project_review_stages(*), project_response_roles(*), project_users(*, user:users(*), roles:roles(*))")
+      .select("*, reviews(*, documents(*), issues(*)), project_milestones(*), project_statuses(*), project_importances(*), project_disciplines(*), project_states(*), project_suitabilities(*), project_review_stages(*), project_response_roles(*), project_users(*, user:users(*), roles:roles(*)), project_packages(*), project_classifications(*)")
       .eq("id", projectId)
       .maybeSingle()
 
@@ -709,65 +670,9 @@ export async function updateProjectSettings(projectId: string, settings: Project
 
     if (projectError) throw new Error(projectError.message)
 
-    // 2. Sync Milestones
-    const { error: delMilestonesErr } = await (supabase as any).from("project_milestones").delete().eq("project_id", projectId)
-    if (delMilestonesErr) throw new Error(delMilestonesErr.message)
-
-    if (settings.availableMilestones.length) {
-      const { error: insMilestonesErr } = await (supabase as any).from("project_milestones").insert(
-        settings.availableMilestones.map(m => ({
-          project_id: projectId,
-          name: m.name,
-          description: m.description,
-          is_selected: settings.selectedMilestones.includes(m.name)
-        }))
-      )
-      if (insMilestonesErr) throw new Error(insMilestonesErr.message)
-    }
-
-    // 3. Sync Statuses
-    const { error: delStatusesErr } = await (supabase as any).from("project_statuses").delete().eq("project_id", projectId)
-    if (delStatusesErr) throw new Error(delStatusesErr.message)
-
-    if (settings.statuses.length) {
-      const { error: insStatusesErr } = await (supabase as any).from("project_statuses").insert(
-        settings.statuses.map(name => ({ project_id: projectId, name }))
-      )
-      if (insStatusesErr) throw new Error(insStatusesErr.message)
-    }
-
-    // 4. Sync Importances
-    const { error: delImportancesErr } = await (supabase as any).from("project_importances").delete().eq("project_id", projectId)
-    if (delImportancesErr) throw new Error(delImportancesErr.message)
-
-    if (settings.importances.length) {
-      const { error: insImportancesErr } = await (supabase as any).from("project_importances").insert(
-        settings.importances.map(name => ({ project_id: projectId, name }))
-      )
-      if (insImportancesErr) throw new Error(insImportancesErr.message)
-    }
-
-    // 5. Sync Disciplines
-    const { error: delDisciplinesErr } = await (supabase as any).from("project_disciplines").delete().eq("project_id", projectId)
-    if (delDisciplinesErr) throw new Error(delDisciplinesErr.message)
-
-    if (settings.disciplines.length) {
-      const { error: insDisciplinesErr } = await (supabase as any).from("project_disciplines").insert(
-        settings.disciplines.map(name => ({ project_id: projectId, name }))
-      )
-      if (insDisciplinesErr) throw new Error(insDisciplinesErr.message)
-    }
-
-    // 6. Sync States
-    const { error: delStatesErr } = await (supabase as any).from("project_states").delete().eq("project_id", projectId)
-    if (delStatesErr) throw new Error(delStatesErr.message)
-
-    if (settings.states.length) {
-      const { error: insStatesErr } = await (supabase as any).from("project_states").insert(
-        settings.states.map(name => ({ project_id: projectId, name }))
-      )
-      if (insStatesErr) throw new Error(insStatesErr.message)
-    }
+    // Milestones, Statuses, Importances, Disciplines, and States are now managed 
+    // via the IssueFieldsSettings component which performs granular CRUD operations.
+    // We no longer sync them here to prevent accidental overwrites or ID replacement.
 
     // 7. Sync Suitabilities
     const { error: delSuitabilitiesErr } = await (supabase as any).from("project_suitabilities").delete().eq("project_id", projectId)

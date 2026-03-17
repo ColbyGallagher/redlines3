@@ -12,6 +12,15 @@ export type CreateIssueFromAnnotationsInput = {
     discipline: string
     importance: "High" | "Medium" | "Low"
     pageNumber: number
+    userId?: string | null
+    state?: string | null
+    status?: string | null
+    milestone?: string | null
+}
+
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+function isUuid(val: string) {
+    return UUID_REGEX.test(val)
 }
 
 export async function createIssueFromAnnotations(data: CreateIssueFromAnnotationsInput) {
@@ -41,13 +50,19 @@ export async function createIssueFromAnnotations(data: CreateIssueFromAnnotation
             .insert({
                 issue_number: issueNumber,
                 comment: data.comment ?? null,
-                discipline: data.discipline,
-                importance: data.importance,
+                discipline: isUuid(data.discipline) ? data.discipline : null,
+                discipline_old: !isUuid(data.discipline) ? data.discipline : null,
+                importance: isUuid(data.importance) ? data.importance : null,
+                importance_old: !isUuid(data.importance) ? data.importance : null,
                 document_id: data.documentId,
                 review_id: data.reviewId,
                 project_id: data.projectId,
                 page_number: data.pageNumber,
-                status: "Open",
+                created_by_user_id: data.userId ?? null,
+                state: data.state && isUuid(data.state) ? data.state : null,
+                status: data.status && isUuid(data.status) ? data.status : null,
+                status_old: data.status && !isUuid(data.status) ? data.status : (data.status ?? "Open"),
+                milestone: data.milestone && isUuid(data.milestone) ? data.milestone : null,
                 date_created: new Date().toISOString(),
                 date_modified: new Date().toISOString(),
             })

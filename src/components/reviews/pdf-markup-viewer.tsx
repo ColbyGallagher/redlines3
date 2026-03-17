@@ -2,17 +2,10 @@
 
 import { FormEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { createPortal } from "react-dom"
-import { PDFDocument, rgb } from "pdf-lib"
-import { AlertTriangle, Loader2, Hand, Type, MessageSquare, AlertCircle, LayoutGrid, PanelLeft } from "lucide-react"
+import { Loader2, AlertCircle, PanelLeft } from "lucide-react"
 import { toast } from "sonner"
 
 import { SyncfusionPdfViewer, SyncfusionPdfViewerHandle } from "@/components/pdf/syncfusion-pdf-viewer"
-import * as pdfjs from "pdfjs-dist"
-
-// Initialize pdfjs worker
-if (typeof window !== "undefined") {
-  pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.mjs`
-}
 
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -57,8 +50,11 @@ const DEFAULT_IMPORTANCES = ["Low", "Medium", "High"]
 const DEFAULT_DISCIPLINES = ["Architectural", "Mechanical", "Electrical", "Structural", "Interior"]
 
 type ProjectSettings = {
-  importances?: string[] | null
-  disciplines?: string[] | null
+  importances?: { id: string; name: string }[] | null
+  disciplines?: { id: string; name: string }[] | null
+  statuses?: { id: string; name: string }[] | null
+  states?: { id: string; name: string }[] | null
+  availableMilestones?: { name: string; description?: string }[] | null
 }
 
 type IssueDetails = {
@@ -76,7 +72,6 @@ export function PDFMarkupViewer({ reviewId, document, childDocuments = [], initi
   const [annotations, setAnnotations] = useState<RealtimeAnnotation[]>([])
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null)
   const [activeColor, setActiveColor] = useState(COLORS[0])
-  const [isExporting, setIsExporting] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const [projectSettings, setProjectSettings] = useState<ProjectSettings | null>(null)
@@ -84,6 +79,9 @@ export function PDFMarkupViewer({ reviewId, document, childDocuments = [], initi
   const [convertDialogOpen, setConvertDialogOpen] = useState(false)
   const [discipline, setDiscipline] = useState("")
   const [importance, setImportance] = useState("")
+  const [state, setState] = useState("")
+  const [status, setStatus] = useState("")
+  const [milestone, setMilestone] = useState("")
   const [issueComment, setIssueComment] = useState("")
   const [isCreatingIssue, setIsCreatingIssue] = useState(false)
   const [issueDetails, setIssueDetails] = useState<IssueDetails | null>(null)
@@ -96,15 +94,30 @@ export function PDFMarkupViewer({ reviewId, document, childDocuments = [], initi
   const [placementCoords, setPlacementCoords] = useState<{ page: number; x: number; y: number } | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
   const [zoomLevel, setZoomLevel] = useState(1)
-  const [sidebarTab, setSidebarTab] = useState<"properties" | "thumbnails">("properties")
   const viewerRef = useRef<SyncfusionPdfViewerHandle>(null)
 
   const availableImportances = useMemo(() =>
-    projectSettings?.importances?.length ? projectSettings.importances : DEFAULT_IMPORTANCES,
+    projectSettings?.importances?.length
+      ? projectSettings.importances
+      : DEFAULT_IMPORTANCES.map(name => ({ id: name, name })),
     [projectSettings]
   )
   const availableDisciplines = useMemo(() =>
-    projectSettings?.disciplines?.length ? projectSettings.disciplines : DEFAULT_DISCIPLINES,
+    projectSettings?.disciplines?.length
+      ? projectSettings.disciplines
+      : DEFAULT_DISCIPLINES.map(name => ({ id: name, name })),
+    [projectSettings]
+  )
+  const availableStatuses = useMemo(() =>
+    projectSettings?.statuses?.length ? projectSettings.statuses : [],
+    [projectSettings]
+  )
+  const availableStates = useMemo(() =>
+    projectSettings?.states?.length ? projectSettings.states : [],
+    [projectSettings]
+  )
+  const availableMilestones = useMemo(() =>
+    projectSettings?.availableMilestones?.length ? projectSettings.availableMilestones : [],
     [projectSettings]
   )
 
@@ -177,7 +190,7 @@ export function PDFMarkupViewer({ reviewId, document, childDocuments = [], initi
         if (!contentType || !contentType.includes("application/json")) {
           throw new Error("API returned non-JSON response")
         }
-        
+
         const payload = await response.json()
         if (payload.user) {
           setCurrentUser({
@@ -200,9 +213,20 @@ export function PDFMarkupViewer({ reviewId, document, childDocuments = [], initi
   // Navigation handled by Syncfusion
   useEffect(() => {
     if (initialPage && numPages >= initialPage && viewerRef.current) {
-        viewerRef.current.goToPage(initialPage)
+      viewerRef.current.goToPage(initialPage)
     }
   }, [initialPage, numPages])
+
+  // Global Escape key listener to cancel tools
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setActiveTool("pan")
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [])
 
   const handleDocumentLoadSuccess = (pageCount: number) => {
     setNumPages(pageCount)
@@ -217,10 +241,14 @@ export function PDFMarkupViewer({ reviewId, document, childDocuments = [], initi
 
     if (activeTool === "issue") {
       setPlacementCoords({ page, x, y })
-      setDiscipline(availableDisciplines[0] ?? "")
-      setImportance(availableImportances[0] ?? "")
+      setDiscipline(availableDisciplines[0]?.id ?? "")
+      setImportance(availableImportances[0]?.id ?? "")
+      setState(availableStates[0]?.id ?? "")
+      setStatus(availableStatuses[0]?.id ?? "")
+      setMilestone(availableMilestones[0]?.name ?? "")
       setIssueComment("")
       setConvertDialogOpen(true)
+      setActiveTool("pan")
       return
     }
   }, [channel, activeTool, availableDisciplines, availableImportances])
@@ -230,63 +258,7 @@ export function PDFMarkupViewer({ reviewId, document, childDocuments = [], initi
     setSelectedAnnotationId((current) => (current === annotationId ? null : current))
   }, [channel])
 
-  const colorButtons = useMemo(
-    () =>
-      COLORS.map((color) => (
-        <button
-          key={color}
-          type="button"
-          className={cn(
-            "h-8 w-8 rounded-full border transition",
-            activeColor === color ? "border-primary ring-2 ring-primary" : "border-transparent"
-          )}
-          style={{ backgroundColor: color }}
-          onClick={() => setActiveColor(color)}
-          aria-label={`Set color ${color}`}
-        />
-      )),
-    [activeColor]
-  )
 
-  const exportAnnotations = async () => {
-    setIsExporting(true)
-    try {
-      const existingPdfBytes = await fetch(document.pdfUrl).then((response) => response.arrayBuffer())
-      const pdfDoc = await PDFDocument.load(existingPdfBytes)
-      const pages = pdfDoc.getPages()
-
-      annotations.forEach((annotation) => {
-        const page = pages[annotation.page - 1]
-        if (!page) return
-
-        const { width, height } = page.getSize()
-        const x = (annotation.x / 100) * width
-        const y = height - (annotation.y / 100) * height
-
-        page.drawText(annotation.content, {
-          x,
-          y,
-          size: 12,
-          color: rgb(...hexToRgb(annotation.color)),
-        })
-      })
-
-      const pdfBytes = await pdfDoc.save()
-      const pdfBuffer = new Uint8Array(pdfBytes)
-      const blob = new Blob([pdfBuffer.buffer], { type: "application/pdf" })
-      const downloadUrl = URL.createObjectURL(blob)
-
-      const link = globalThis.document.createElement("a")
-      link.href = downloadUrl
-      link.download = `${document.name.replace(/\s+/g, "-").toLowerCase()}-marked.pdf`
-      link.click()
-      URL.revokeObjectURL(downloadUrl)
-    } catch (error) {
-      console.error("Failed to export PDF", error)
-    } finally {
-      setIsExporting(false)
-    }
-  }
 
   const selectedAnnotation = useMemo(
     () => annotations.find((annotation) => annotation.id === selectedAnnotationId),
@@ -339,6 +311,9 @@ export function PDFMarkupViewer({ reviewId, document, childDocuments = [], initi
   const resetConvertForm = useCallback(() => {
     setDiscipline("")
     setImportance("")
+    setState("")
+    setStatus("")
+    setMilestone("")
     setIssueComment("")
     setIsCreatingIssue(false)
     setPlacementCoords(null)
@@ -349,11 +324,14 @@ export function PDFMarkupViewer({ reviewId, document, childDocuments = [], initi
       return
     }
 
-    setDiscipline(availableDisciplines[0] ?? "")
-    setImportance(availableImportances[0] ?? "")
+    setDiscipline(availableDisciplines[0]?.id ?? "")
+    setImportance(availableImportances[0]?.id ?? "")
+    setState(availableStates[0]?.id ?? "")
+    setStatus(availableStatuses[0]?.id ?? "")
+    setMilestone(availableMilestones[0]?.name ?? "")
     setIssueComment(selectedAnnotation.content)
     setConvertDialogOpen(true)
-  }, [selectedAnnotation, availableDisciplines, availableImportances])
+  }, [selectedAnnotation, availableDisciplines, availableImportances, availableStates, availableStatuses, availableMilestones])
 
   const handleConvertDialogChange = useCallback((next: boolean) => {
     if (!next) {
@@ -374,11 +352,25 @@ export function PDFMarkupViewer({ reviewId, document, childDocuments = [], initi
     }
 
     setIsCreatingIssue(true)
+    const toastId = toast.loading("Creating issue...")
+
     try {
       const annotationId = placementCoords ? crypto.randomUUID() : selectedAnnotation!.id
       const pageNumber = placementCoords ? placementCoords.page : selectedAnnotation!.page
 
       let baseAnnotation: RealtimeAnnotation | undefined = selectedAnnotation
+      let finalComment = issueComment
+
+      // If it's a Syncfusion annotation, try to get the very latest content from the viewer
+      if (selectedAnnotation?.type === "syncfusion" && viewerRef.current) {
+        const syncAnn = viewerRef.current.getAnnotationById(selectedAnnotation.id)
+        if (syncAnn) {
+          const latestContent = syncAnn.note || syncAnn.subject || syncAnn.author || ""
+          if (latestContent && !issueComment) {
+            finalComment = latestContent
+          }
+        }
+      }
 
       // 1. If new placement, create the annotation first
       if (placementCoords) {
@@ -390,7 +382,7 @@ export function PDFMarkupViewer({ reviewId, document, childDocuments = [], initi
           page: placementCoords.page,
           x: placementCoords.x,
           y: placementCoords.y,
-          content: issueComment || "New issue",
+          content: finalComment || "New issue",
           color: activeColor,
           type: "text",
           classification: null,
@@ -419,7 +411,10 @@ export function PDFMarkupViewer({ reviewId, document, childDocuments = [], initi
           annotationIds: [annotationId],
           discipline,
           importance,
-          comment: issueComment,
+          state,
+          status,
+          milestone,
+          comment: finalComment,
           pageNumber,
         }),
       })
@@ -433,18 +428,18 @@ export function PDFMarkupViewer({ reviewId, document, childDocuments = [], initi
       if (payload.issue?.id) {
         setAnnotations((current) =>
           current.map((ann) =>
-            ann.id === annotationId ? { ...ann, issueId: payload.issue.id } : ann
+            ann.id === annotationId ? { ...ann, issueId: payload.issue.id, content: finalComment } : ann
           )
         )
         if (baseAnnotation) {
           channel?.broadcastEvent({
             type: "UPDATE",
-            annotation: { ...baseAnnotation, issueId: payload.issue.id }
+            annotation: { ...baseAnnotation, issueId: payload.issue.id, content: finalComment }
           })
         }
       }
 
-      toast.success("Issue created successfully.")
+      toast.success("Issue created successfully.", { id: toastId })
       setConvertDialogOpen(false)
       resetConvertForm()
       if (placementCoords) {
@@ -452,7 +447,7 @@ export function PDFMarkupViewer({ reviewId, document, childDocuments = [], initi
       }
     } catch (error) {
       console.error("Annotation conversion failed", error)
-      toast.error(error instanceof Error ? error.message : "Failed to create issue.")
+      toast.error(error instanceof Error ? error.message : "Failed to create issue.", { id: toastId })
     } finally {
       setIsCreatingIssue(false)
     }
@@ -471,193 +466,203 @@ export function PDFMarkupViewer({ reviewId, document, childDocuments = [], initi
     resetConvertForm,
   ])
 
+  const handleSyncfusionAnnotationAdd = useCallback(async (args: any) => {
+    if (!channel || !currentUser) return
+
+    // Syncfusion annotation data
+    const syncfusionAnnotation = args.annotation || args.annotationData
+    if (!syncfusionAnnotation) return
+
+    const annotationId = syncfusionAnnotation.annotationId || crypto.randomUUID()
+    const creator = `${currentUser.first_name} ${currentUser.last_name}`.trim()
+    const pageNum = syncfusionAnnotation.pageNumber || currentPage
+
+    // Map Syncfusion coordinates to our percentage-based coordinates
+    // Syncfusion coordinates are in points (1/72 inch) relative to the page
+    let xPercent = 0
+    let yPercent = 0
+
+    if (viewerRef.current) {
+      const pageInfo = viewerRef.current.getPageInfo(pageNum)
+      if (pageInfo.width > 0 && pageInfo.height > 0) {
+        xPercent = (syncfusionAnnotation.left / pageInfo.width) * 100
+        yPercent = (syncfusionAnnotation.top / pageInfo.height) * 100
+      } else {
+        // Fallback if page info not yet available
+        xPercent = syncfusionAnnotation.left || 0
+        yPercent = syncfusionAnnotation.top || 0
+      }
+    }
+
+    const content = syncfusionAnnotation.note || syncfusionAnnotation.subject || syncfusionAnnotation.author || "New Comment"
+
+    const newAnnotation: RealtimeAnnotation = {
+      id: annotationId,
+      reviewId,
+      documentId: document.id,
+      page: pageNum,
+      x: xPercent,
+      y: yPercent,
+      content,
+      color: activeColor,
+      type: "syncfusion", // Mark it as coming from Syncfusion
+      classification: null,
+      priority: null,
+      issueId: null,
+      createdBy: creator,
+      createdAt: new Date().toISOString(),
+    }
+
+    // Update local state
+    setAnnotations((current) => [...current, newAnnotation])
+
+    // Sync to Supabase
+    await channel.createAnnotation({
+      ...newAnnotation,
+    })
+  }, [channel, currentUser, reviewId, document.id, currentPage, activeColor])
+
+  const handleSyncfusionAnnotationSelect = useCallback((args: any) => {
+    const annotationId = args.annotation?.annotationId
+    if (annotationId) {
+      setSelectedAnnotationId(annotationId)
+    }
+  }, [])
+
+  const handleSyncfusionAnnotationRemove = useCallback(async (args: any) => {
+    const annotationId = args.annotation?.annotationId
+    if (annotationId && channel) {
+      await channel.deleteAnnotation(annotationId)
+      setSelectedAnnotationId((current) => (current === annotationId ? null : current))
+    }
+  }, [channel])
+
+  const handleSyncfusionToolbarClick = useCallback((args: any) => {
+    if (args.item && args.item.id === "IssueBtn") {
+      setActiveTool("issue")
+      toast.info("Issue tool active. Click on the document to place a marker.")
+      // Force de-selection in Syncfusion to avoid mode conflict
+      viewerRef.current?.setAnnotationMode('None')
+    } else if (args.item && (args.item.id.includes("Selection") || args.item.id.includes("Pan"))) {
+      // If user clicks the standard selection or pan tools, reset our custom tool
+      setActiveTool("pan")
+    }
+  }, [viewerRef])
+
   return (
     <div ref={containerRef} className="flex h-full w-full flex-col">
-      {/* 1. Header Toolbar */}
-      <div className="flex items-center justify-between border-b p-3">
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-muted-foreground mr-1">Tool</span>
-            <div className="flex items-center gap-1 bg-muted/50 p-1 rounded-md">
-              <Button
-                variant={activeTool === "pan" ? "secondary" : "ghost"}
-                size="sm"
-                className={cn("h-7 px-2 gap-1.5 text-xs font-medium", activeTool === "pan" && "bg-background shadow-sm")}
-                onClick={() => setActiveTool("pan")}
-              >
-                <Hand className="h-3.5 w-3.5" />
-                Pan
-              </Button>
-              <Button
-                variant={activeTool === "issue" ? "secondary" : "ghost"}
-                size="sm"
-                className={cn("h-7 px-2 gap-1.5 text-xs font-medium", activeTool === "issue" && "bg-background shadow-sm")}
-                onClick={() => setActiveTool("issue")}
-              >
-                <AlertCircle className="h-3.5 w-3.5" />
-                Issue
-              </Button>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-muted-foreground">Color</span>
-            <div className="flex items-center gap-2">{colorButtons}</div>
-          </div>
-        </div>
-
-        <Button size="sm" onClick={exportAnnotations} disabled={isExporting}>
-          {isExporting ? "Preparing..." : "Export annotated PDF"}
-        </Button>
-      </div>
 
       {/* 2. Main Content Area */}
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar */}
         <aside className="flex w-72 flex-col border-r bg-card">
-          <div className="border-b">
-            <div className="flex">
-              <button
-                type="button"
-                onClick={() => setSidebarTab("properties")}
-                className={cn(
-                  "flex-1 flex items-center justify-center gap-1.5 px-4 py-3 text-xs font-semibold uppercase tracking-wider transition-colors border-b-2",
-                  sidebarTab === "properties"
-                    ? "border-primary text-primary"
-                    : "border-transparent text-muted-foreground hover:text-foreground"
-                )}
-              >
-                <PanelLeft className="h-3.5 w-3.5" />
-                Properties
-              </button>
-              <button
-                type="button"
-                onClick={() => setSidebarTab("thumbnails")}
-                className={cn(
-                  "flex-1 flex items-center justify-center gap-1.5 px-4 py-3 text-xs font-semibold uppercase tracking-wider transition-colors border-b-2",
-                  sidebarTab === "thumbnails"
-                    ? "border-primary text-primary"
-                    : "border-transparent text-muted-foreground hover:text-foreground"
-                )}
-              >
-                <LayoutGrid className="h-3.5 w-3.5" />
-                Thumbnails
-              </button>
+          <div className="border-b px-4 py-3">
+            <div className="flex items-center gap-2">
+              <PanelLeft className="h-4 w-4 text-primary" />
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-foreground">Properties</h3>
             </div>
           </div>
-          {sidebarTab === "properties" && (
-            <div className="flex-1 overflow-auto p-4">
-              {selectedAnnotation ? (
-                <div className="space-y-4">
-                  <div className="space-y-1">
-                    <p className="text-xs font-semibold text-muted-foreground">Content</p>
-                    <p className="text-sm font-medium break-words">{selectedAnnotation.content}</p>
+          <div className="flex-1 overflow-auto p-4">
+            {selectedAnnotation ? (
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold text-muted-foreground">Content</p>
+                  <p className="text-sm font-medium break-words">{selectedAnnotation.content}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold text-muted-foreground">Author</p>
+                  <p className="text-sm">{selectedAnnotation.createdBy}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold text-muted-foreground">Created</p>
+                  <p className="text-sm">{new Date(selectedAnnotation.createdAt).toLocaleString()}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold text-muted-foreground">Color</p>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="inline-flex h-5 w-5 rounded-full border"
+                      style={{ backgroundColor: selectedAnnotation.color }}
+                    />
+                    <span className="text-xs text-muted-foreground">{selectedAnnotation.color}</span>
                   </div>
-                  <div className="space-y-1">
-                    <p className="text-xs font-semibold text-muted-foreground">Author</p>
-                    <p className="text-sm">{selectedAnnotation.createdBy}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-xs font-semibold text-muted-foreground">Created</p>
-                    <p className="text-sm">{new Date(selectedAnnotation.createdAt).toLocaleString()}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-xs font-semibold text-muted-foreground">Color</p>
-                    <div className="flex items-center gap-2">
-                      <span
-                        className="inline-flex h-5 w-5 rounded-full border"
-                        style={{ backgroundColor: selectedAnnotation.color }}
-                      />
-                      <span className="text-xs text-muted-foreground">{selectedAnnotation.color}</span>
-                    </div>
-                  </div>
-                  {selectedAnnotation.issueId && (
-                    <div className="space-y-2 rounded-md border border-border bg-muted/50 p-3 text-xs">
-                      {issueLoading ? (
-                        <p className="text-muted-foreground">Loading issue details…</p>
-                      ) : issueError ? (
-                        <p className="text-destructive">{issueError}</p>
-                      ) : issueDetails ? (
-                        <div className="space-y-3">
-                          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Linked issue</p>
-                          <dl className="space-y-2 text-[11px]">
-                            <div className="flex items-center justify-between">
-                              <dt className="text-muted-foreground">Issue #</dt>
-                              <dd className="font-medium">{issueDetails.issueNumber ?? "Unknown"}</dd>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <dt className="text-muted-foreground">Discipline</dt>
-                              <dd className="font-medium">{issueDetails.discipline ?? "Unknown"}</dd>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <dt className="text-muted-foreground">Importance</dt>
-                              <dd className="font-medium">{issueDetails.importance ?? "Unknown"}</dd>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <dt className="text-muted-foreground">Created by</dt>
-                              <dd className="font-medium">{issueDetails.createdBy ?? "Unknown"}</dd>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <dt className="text-muted-foreground">Date created</dt>
-                              <dd className="font-medium">{formatIssueTimestamp(issueDetails.dateCreated)}</dd>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <dt className="text-muted-foreground">Last modified</dt>
-                              <dd className="font-medium">{formatIssueTimestamp(issueDetails.dateModified)}</dd>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <dt className="text-muted-foreground">Status</dt>
-                              <dd className="font-medium">{issueDetails.status ?? "Unknown"}</dd>
-                            </div>
-                          </dl>
-                        </div>
-                      ) : (
-                        <p className="text-muted-foreground">Issue data not available.</p>
-                      )}
-                    </div>
-                  )}
-                  <div className="space-y-2">
-                    <Button
-                      variant="secondary"
-                      className="w-full"
-                      onClick={handleOpenConvertDialog}
-                      disabled={Boolean(selectedAnnotation.issueId)}
-                    >
-                      {selectedAnnotation.issueId ? "Annotation already linked" : "Convert to issue"}
-                    </Button>
-                    {selectedAnnotation.issueId && (
-                      <p className="text-xs text-muted-foreground">This annotation is already linked to an issue.</p>
-                    )}
-                    {settingsError && (
-                      <p className="text-xs text-destructive">{settingsError}</p>
+                </div>
+                {selectedAnnotation.issueId && (
+                  <div className="space-y-2 rounded-md border border-border bg-muted/50 p-3 text-xs">
+                    {issueLoading ? (
+                      <p className="text-muted-foreground">Loading issue details…</p>
+                    ) : issueError ? (
+                      <p className="text-destructive">{issueError}</p>
+                    ) : issueDetails ? (
+                      <div className="space-y-3">
+                        <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Linked issue</p>
+                        <dl className="space-y-2 text-[11px]">
+                          <div className="flex items-center justify-between">
+                            <dt className="text-muted-foreground">Issue #</dt>
+                            <dd className="font-medium">{issueDetails.issueNumber ?? "Unknown"}</dd>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <dt className="text-muted-foreground">Discipline</dt>
+                            <dd className="font-medium">{issueDetails.discipline ?? "Unknown"}</dd>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <dt className="text-muted-foreground">Importance</dt>
+                            <dd className="font-medium">{issueDetails.importance ?? "Unknown"}</dd>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <dt className="text-muted-foreground">Created by</dt>
+                            <dd className="font-medium">{issueDetails.createdBy ?? "Unknown"}</dd>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <dt className="text-muted-foreground">Date created</dt>
+                            <dd className="font-medium">{formatIssueTimestamp(issueDetails.dateCreated)}</dd>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <dt className="text-muted-foreground">Last modified</dt>
+                            <dd className="font-medium">{formatIssueTimestamp(issueDetails.dateModified)}</dd>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <dt className="text-muted-foreground">Status</dt>
+                            <dd className="font-medium">{issueDetails.status ?? "Unknown"}</dd>
+                          </div>
+                        </dl>
+                      </div>
+                    ) : (
+                      <p className="text-muted-foreground">Issue data not available.</p>
                     )}
                   </div>
+                )}
+                <div className="space-y-2">
                   <Button
-                    variant="outline"
-                    className="w-full text-destructive hover:bg-destructive hover:text-destructive-foreground"
-                    onClick={() => handleDeleteAnnotation(selectedAnnotation.id)}
+                    variant="secondary"
+                    className="w-full"
+                    onClick={handleOpenConvertDialog}
+                    disabled={Boolean(selectedAnnotation.issueId)}
                   >
-                    Delete Markup
+                    {selectedAnnotation.issueId ? "Annotation already linked" : "Convert to issue"}
                   </Button>
+                  {selectedAnnotation.issueId && (
+                    <p className="text-xs text-muted-foreground">This annotation is already linked to an issue.</p>
+                  )}
+                  {settingsError && (
+                    <p className="text-xs text-destructive">{settingsError}</p>
+                  )}
                 </div>
-              ) : (
-                <div className="flex h-full flex-col items-center justify-center text-center text-sm text-muted-foreground">
-                  <p>No markup selected</p>
-                  <p className="text-xs">Select a markup to view details.</p>
-                </div>
-              )}
-            </div>
-          )}
-          {sidebarTab === "thumbnails" && (
-            <ThumbnailsPanel
-              numPages={numPages}
-              currentPage={currentPage}
-              childDocuments={childDocuments}
-              parentDocumentCode={document.code}
-              pdfUrl={document.pdfUrl}
-              viewerRef={viewerRef}
-            />
-          )}
+                <Button
+                  variant="outline"
+                  className="w-full text-destructive hover:bg-destructive hover:text-destructive-foreground"
+                  onClick={() => handleDeleteAnnotation(selectedAnnotation.id)}
+                >
+                  Delete Markup
+                </Button>
+              </div>
+            ) : (
+              <div className="flex h-full flex-col items-center justify-center text-center text-sm text-muted-foreground">
+                <p>No markup selected</p>
+                <p className="text-xs">Select a markup to view details.</p>
+              </div>
+            )}
+          </div>
         </aside>
 
         {/* PDF Container */}
@@ -668,10 +673,16 @@ export function PDFMarkupViewer({ reviewId, document, childDocuments = [], initi
             onDocumentLoad={handleDocumentLoadSuccess}
             onPageChange={setCurrentPage}
             onZoomChange={setZoomLevel}
+            onAnnotationAdd={handleSyncfusionAnnotationAdd}
+            onAnnotationSelect={handleSyncfusionAnnotationSelect}
+            onAnnotationRemove={handleSyncfusionAnnotationRemove}
+            onToolbarClick={handleSyncfusionToolbarClick}
             height="100%"
-            showToolbar={false}
+            showToolbar={true} // Enable toolbar so user can use annotation tools
+            enableAnnotation={true}
+            activeTool={activeTool}
           />
-          
+
           {/* Custom Annotation Overlay Layer - We render all page overlays 
               but only the ones currently in Syncfusion's DOM will actually find a portal target */}
           {Array.from({ length: numPages }, (_, index) => (
@@ -768,8 +779,8 @@ export function PDFMarkupViewer({ reviewId, document, childDocuments = [], initi
                     </SelectTrigger>
                     <SelectContent>
                       {availableDisciplines.map((option) => (
-                        <SelectItem key={option} value={option}>
-                          {option}
+                        <SelectItem key={option.id} value={option.id}>
+                          {option.name}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -785,8 +796,61 @@ export function PDFMarkupViewer({ reviewId, document, childDocuments = [], initi
                     </SelectTrigger>
                     <SelectContent>
                       {availableImportances.map((option) => (
-                        <SelectItem key={option} value={option}>
-                          {option}
+                        <SelectItem key={option.id} value={option.id}>
+                          {option.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="grid gap-1.5">
+                <Label htmlFor="convert-milestone">Milestone</Label>
+                <Select value={milestone} onValueChange={setMilestone}>
+                  <SelectTrigger id="convert-milestone">
+                    <SelectValue placeholder="Select milestone" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableMilestones.length > 0 ? (
+                      availableMilestones.map((m) => (
+                        <SelectItem key={m.name} value={m.name}>
+                          {m.name}
+                        </SelectItem>
+                      ))
+                    ) : (
+                      <SelectItem value="none" disabled>No milestones configured</SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="grid gap-1.5">
+                  <Label htmlFor="convert-state">State</Label>
+                  <Select value={state} onValueChange={setState}>
+                    <SelectTrigger id="convert-state">
+                      <SelectValue placeholder="Select state" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableStates.map((s) => (
+                        <SelectItem key={s.id} value={s.id}>
+                          {s.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="convert-status">Status</Label>
+                  <Select value={status} onValueChange={setStatus}>
+                    <SelectTrigger id="convert-status">
+                      <SelectValue placeholder="Select status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableStatuses.map((s) => (
+                        <SelectItem key={s.id} value={s.id}>
+                          {s.name}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -835,15 +899,30 @@ function SyncfusionPageOverlay({
   const [targetElement, setTargetElement] = useState<HTMLElement | null>(null)
 
   useEffect(() => {
-    // Try to find the Syncfusion page container for this pageNumber.
-    // Syncfusion uses a 0-indexed ID pattern: syncfusion-pdf-viewer_pageContainer_N
-    const interval = setInterval(() => {
-      const el = document.getElementById(`syncfusion-pdf-viewer_pageContainer_${pageNumber - 1}`)
+    const checkElement = () => {
+      // Try multiple possible ID patterns
+      const patterns = [
+        `syncfusion-pdf-viewer_pageContainer_${pageNumber - 1}`,
+        `syncfusion-pdf-viewer_pageDiv_${pageNumber - 1}`,
+        `syncfusion-pdf-viewer_pageCanvas_${pageNumber - 1}`,
+        `syncfusion-pdf-viewer_pageView_${pageNumber - 1}`
+      ];
+
+      let el: HTMLElement | null = null;
+      for (const pattern of patterns) {
+        el = document.getElementById(pattern);
+        if (el) break;
+      }
+
       if (el && el !== targetElement) {
         setTargetElement(el)
-        clearInterval(interval)
+      } else if (!el && targetElement) {
+        setTargetElement(null)
       }
-    }, 500)
+    }
+
+    const interval = setInterval(checkElement, 2000)
+    checkElement()
 
     return () => clearInterval(interval)
   }, [pageNumber, targetElement])
@@ -863,155 +942,6 @@ function SyncfusionPageOverlay({
   )
 }
 
-function ThumbnailsPanel({
-  numPages,
-  currentPage,
-  childDocuments,
-  parentDocumentCode,
-  pdfUrl,
-  viewerRef,
-}: {
-  numPages: number
-  currentPage: number
-  childDocuments: ReviewDocument[]
-  parentDocumentCode: string
-  pdfUrl: string
-  viewerRef: React.RefObject<SyncfusionPdfViewerHandle | null>
-}) {
-  const thumbnailListRef = useRef<HTMLDivElement>(null)
-
-  const scrollToPage = useCallback((pageNumber: number) => {
-    if (viewerRef.current) {
-      viewerRef.current.goToPage(pageNumber)
-    }
-  }, [viewerRef])
-
-  // Auto-scroll the thumbnail list to keep current page visible
-  useEffect(() => {
-    if (!thumbnailListRef.current) return
-    const activeThumb = thumbnailListRef.current.querySelector(`[data-thumb-page="${currentPage}"]`)
-    if (activeThumb) {
-      activeThumb.scrollIntoView({ behavior: "smooth", block: "nearest" })
-    }
-  }, [currentPage])
-
-  if (numPages === 0) {
-    return (
-      <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-        Loading pages…
-      </div>
-    )
-  }
-
-  return (
-    <div ref={thumbnailListRef} className="flex-1 overflow-auto p-3">
-      <div className="space-y-3">
-          {Array.from({ length: numPages }, (_, index) => {
-            const pageNum = index + 1
-            const isActive = currentPage === pageNum
-            const childDoc = childDocuments.find(d => d.pageNumber === pageNum)
-            const docCode = childDoc?.documentCode || parentDocumentCode
-            const docName = childDoc?.documentName
-
-            return (
-              <button
-                key={pageNum}
-                type="button"
-                data-thumb-page={pageNum}
-                onClick={() => scrollToPage(pageNum)}
-                className={cn(
-                  "group w-full rounded-lg border-2 bg-white p-1 transition-all hover:shadow-md",
-                  isActive
-                    ? "border-primary ring-2 ring-primary/20 shadow-sm"
-                    : "border-border hover:border-primary/40"
-                )}
-              >
-                <div className="relative overflow-hidden rounded bg-muted/10">
-                   <ThumbnailPage pdfUrl={pdfUrl} pageNumber={pageNum} />
-                  {/* Page number badge */}
-                  <div className={cn(
-                    "absolute top-1.5 left-1.5 rounded px-1.5 py-0.5 text-[10px] font-bold shadow-sm",
-                    isActive
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-background/90 text-muted-foreground"
-                  )}>
-                    {pageNum}
-                  </div>
-                </div>
-                <div className="mt-1.5 px-1 pb-0.5 text-left">
-                  {docCode && (
-                    <code className={cn(
-                      "block truncate font-mono text-[10px] font-semibold",
-                      isActive ? "text-primary" : "text-foreground"
-                    )}>
-                      {docCode}
-                    </code>
-                  )}
-                  {docName && (
-                    <span className="block truncate text-[10px] text-muted-foreground mt-0.5">
-                      {docName}
-                    </span>
-                  )}
-                </div>
-              </button>
-            )
-          })}
-      </div>
-    </div>
-  )
-}
-
-/**
- * Renders a single PDF page as a thumbnail using pdfjs-dist.
- */
-function ThumbnailPage({ pdfUrl, pageNumber }: { pdfUrl: string; pageNumber: number }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    let active = true
-    const render = async () => {
-      try {
-        const loadingTask = pdfjs.getDocument(pdfUrl)
-        const pdf = await loadingTask.promise
-        if (!active) return
-
-        const page = await pdf.getPage(pageNumber)
-        if (!active || !canvasRef.current) return
-
-        const canvas = canvasRef.current
-        const context = canvas.getContext("2d")
-        if (!context) return
-
-        const viewport = page.getViewport({ scale: 0.2 }) // Small scale for thumbnails
-        canvas.height = viewport.height
-        canvas.width = viewport.width
-
-        const renderContext: any = {
-          canvasContext: context,
-          viewport: viewport,
-        }
-        await (page as any).render(renderContext).promise
-        if (active) setLoading(false)
-      } catch (err) {
-        if (active) console.error("Thumbnail render error:", err)
-      }
-    }
-    render()
-    return () => { active = false }
-  }, [pdfUrl, pageNumber])
-
-  return (
-    <div className="relative aspect-[1/1.41] w-full flex items-center justify-center">
-      {loading && (
-        <div className="absolute inset-0 flex items-center justify-center">
-          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground/40" />
-        </div>
-      )}
-      <canvas ref={canvasRef} className={cn("w-full h-auto block", loading ? "opacity-0" : "opacity-100 transition-opacity")} />
-    </div>
-  )
-}
 
 function AnnotationLayer({
   pageNumber,
@@ -1050,10 +980,10 @@ function AnnotationLayer({
   return (
     <div
       className={cn(
-        "absolute inset-0",
-        activeTool === "issue" && "cursor-crosshair"
+        "absolute inset-0 z-[9999] bg-transparent",
+        activeTool === "issue" ? "cursor-crosshair pointer-events-auto" : "pointer-events-none"
       )}
-      onClick={handleClick}
+      onClickCapture={handleClick}
       onMouseMove={handleMouseMove}
     >
       {activeTool === "issue" && (
@@ -1093,7 +1023,7 @@ function AnnotationBadge({
 
   return (
     <div
-      className="absolute cursor-pointer"
+      className="absolute cursor-pointer pointer-events-auto z-[60]"
       style={{
         top: `${annotation.y}%`,
         left: `${annotation.x}%`,
@@ -1195,14 +1125,6 @@ function applyRealtimeEvent(current: RealtimeAnnotation[], event: AnnotationEven
   return current
 }
 
-function hexToRgb(hex: string): [number, number, number] {
-  const sanitized = hex.replace("#", "")
-  const bigint = parseInt(sanitized, 16)
-  const r = (bigint >> 16) & 255
-  const g = (bigint >> 8) & 255
-  const b = bigint & 255
-  return [r / 255, g / 255, b / 255]
-}
 
 function formatIssueTimestamp(value?: string | null) {
   if (!value) return "Unknown"

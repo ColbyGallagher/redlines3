@@ -10,6 +10,13 @@ type CreateIssueRequestBody = {
     reviewId?: unknown
     discipline?: unknown
     importance?: unknown
+    milestone?: unknown
+    state?: unknown
+    status?: unknown
+    package?: unknown
+    documentId?: unknown
+    reviewers_name?: unknown
+    classification?: unknown
     comment?: unknown
 }
 
@@ -46,6 +53,13 @@ export async function POST(request: Request) {
         const reviewId = normalizeRequiredString(payload.reviewId, "Review")
         const discipline = normalizeRequiredString(payload.discipline, "Discipline")
         const importance = normalizeRequiredString(payload.importance, "Importance")
+        const milestone = normalizeOptionalString(payload.milestone)
+        const state = normalizeOptionalString(payload.state)
+        const status = normalizeOptionalString(payload.status) ?? "Open"
+        const packageId = normalizeOptionalString(payload.package)
+        const documentId = normalizeOptionalString(payload.documentId)
+        const reviewersName = normalizeOptionalString(payload.reviewers_name)
+        const classification = normalizeOptionalString(payload.classification)
         const comment = normalizeOptionalString(payload.comment)
 
         const supabase = await createServerSupabaseClient()
@@ -87,7 +101,15 @@ export async function POST(request: Request) {
                 discipline,
                 importance,
                 comment,
-                status: "Open",
+                status,
+                milestone,
+                state,
+                package: packageId,
+                document_id: documentId,
+                document_number: documentId,
+                document_title: documentId,
+                reviewers_name: reviewersName,
+                classification: classification,
                 date_created: now,
                 date_modified: now,
             })

@@ -143,6 +143,7 @@ export function ReviewDetailsView({ review }: ReviewDetailsViewProps) {
         setDeleteDialogOpen(false)
         setSelectedDocument(null)
         setSelectedDocumentIds((prev) => prev.filter((id) => id !== selectedDocument.id))
+        router.refresh()
       } else {
         toast.error(result.message || "Failed to delete document")
       }

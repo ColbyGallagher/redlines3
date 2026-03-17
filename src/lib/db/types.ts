@@ -92,7 +92,9 @@ export type Issue = {
   modified_by_user_id: string | null
   comment: string | null
   discipline: string | null
+  discipline_old?: string | null
   importance: string | null
+  importance_old?: string | null
   document_id: string | null
   review_id: string
   project_id: string
@@ -100,9 +102,17 @@ export type Issue = {
   page_number: number | null
   ifc_element_id: string | null
   status: string | null
+  status_old?: string | null
   age_days?: number | null
   is_high_priority?: boolean | null
   is_long_open?: boolean | null
+  milestone?: string | null
+  state?: string | null
+  package?: string | null
+  document_number?: string | null
+  document_title?: string | null
+  reviewers_name?: string | null
+  classification?: string | null
 }
 
 export type ProjectMilestone = {
@@ -138,6 +148,18 @@ export type ProjectState = {
 }
 
 export type ProjectSuitability = {
+  id: string
+  project_id: string
+  name: string
+}
+
+export type ProjectPackage = {
+  id: string
+  project_id: string
+  name: string
+}
+
+export type ProjectClassification = {
   id: string
   project_id: string
   name: string
@@ -237,6 +259,8 @@ export type Database = {
       user_companies: TableDefinition<UserCompany>
       review_users: TableDefinition<ReviewUser>
       project_users: TableDefinition<ProjectUser>
+      project_packages: TableDefinition<ProjectPackage>
+      project_classifications: TableDefinition<ProjectClassification>
     }
     Views: Record<string, never>
     Functions: Record<string, never>

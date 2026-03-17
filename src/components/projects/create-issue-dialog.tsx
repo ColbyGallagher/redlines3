@@ -29,11 +29,12 @@ import type { ProjectSummary } from "@/lib/data/projects"
 type CreateIssueDialogProps = {
     projectId: string
     reviews: ProjectSummary["reviews"]
-    disciplines: string[]
-    importances: string[]
+    settings: ProjectSummary["settings"]
+    members: ProjectSummary["members"]
+    documents: { id: string; name: string; code: string | null }[]
 }
 
-export function CreateIssueDialog({ projectId, reviews, disciplines, importances }: CreateIssueDialogProps) {
+export function CreateIssueDialog({ projectId, reviews, settings, members, documents }: CreateIssueDialogProps) {
     const router = useRouter()
     const [open, setOpen] = React.useState(false)
     const [isSubmitting, setIsSubmitting] = React.useState(false)
@@ -41,12 +42,26 @@ export function CreateIssueDialog({ projectId, reviews, disciplines, importances
     const [reviewId, setReviewId] = React.useState("")
     const [discipline, setDiscipline] = React.useState("")
     const [importance, setImportance] = React.useState("")
+    const [milestone, setMilestone] = React.useState("")
+    const [state, setState] = React.useState("")
+    const [status, setStatus] = React.useState("")
+    const [packageId, setPackageId] = React.useState("")
+    const [documentId, setDocumentId] = React.useState("")
+    const [reviewerId, setReviewerId] = React.useState("")
+    const [classification, setClassification] = React.useState("")
     const [comment, setComment] = React.useState("")
 
     function resetForm() {
         setReviewId("")
         setDiscipline("")
         setImportance("")
+        setMilestone("")
+        setState("")
+        setStatus("")
+        setPackageId("")
+        setDocumentId("")
+        setReviewerId("")
+        setClassification("")
         setComment("")
     }
 
@@ -70,6 +85,15 @@ export function CreateIssueDialog({ projectId, reviews, disciplines, importances
                     reviewId,
                     discipline,
                     importance,
+                    milestone: milestone || undefined,
+                    state: state || undefined,
+                    status: status || undefined,
+                    package: packageId || undefined,
+                    documentId: documentId || undefined,
+                    document_number: documentId || undefined, // Referring to the same doc
+                    document_title: documentId || undefined, // Referring to the same doc
+                    reviewers_name: reviewerId || undefined,
+                    classification: classification || undefined,
                     comment: comment || undefined,
                 }),
             })
@@ -109,19 +133,34 @@ export function CreateIssueDialog({ projectId, reviews, disciplines, importances
                         </DialogDescription>
                     </DialogHeader>
 
-                    <div className="grid gap-4 py-4">
-                        <div className="grid gap-1.5">
-                            <Label htmlFor="reviewId">Review <span className="text-destructive">*</span></Label>
-                            <Select value={reviewId} onValueChange={setReviewId}>
-                                <SelectTrigger id="reviewId">
-                                    <SelectValue placeholder="Select review" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {reviews.map((r) => (
-                                        <SelectItem key={r.id} value={r.id}>{r.reviewName}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                    <div className="grid gap-4 py-4 max-h-[60vh] overflow-y-auto px-1">
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="grid gap-1.5">
+                                <Label htmlFor="reviewId">Review <span className="text-destructive">*</span></Label>
+                                <Select value={reviewId} onValueChange={setReviewId}>
+                                    <SelectTrigger id="reviewId">
+                                        <SelectValue placeholder="Select review" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {reviews.map((r) => (
+                                            <SelectItem key={r.id} value={r.id}>{r.reviewName}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="grid gap-1.5">
+                                <Label htmlFor="milestone">Milestone</Label>
+                                <Select value={milestone} onValueChange={setMilestone}>
+                                    <SelectTrigger id="milestone">
+                                        <SelectValue placeholder="Select" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {settings.availableMilestones.map((m) => (
+                                            <SelectItem key={m.name} value={m.name}>{m.name}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
                         </div>
 
                         <div className="grid grid-cols-2 gap-4">
@@ -132,9 +171,9 @@ export function CreateIssueDialog({ projectId, reviews, disciplines, importances
                                         <SelectValue placeholder="Select" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        {disciplines.map((d) => (
-                                            <SelectItem key={d} value={d}>{d}</SelectItem>
-                                        ))}
+                                    {settings.disciplines.map((d) => (
+                                        <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                                    ))}
                                     </SelectContent>
                                 </Select>
                             </div>
@@ -146,12 +185,104 @@ export function CreateIssueDialog({ projectId, reviews, disciplines, importances
                                         <SelectValue placeholder="Select" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        {importances.map((i) => (
-                                            <SelectItem key={i} value={i}>{i}</SelectItem>
-                                        ))}
+                                    {settings.importances.map((i) => (
+                                        <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>
+                                    ))}
                                     </SelectContent>
                                 </Select>
                             </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="grid gap-1.5">
+                                <Label htmlFor="state">State</Label>
+                                <Select value={state} onValueChange={setState}>
+                                    <SelectTrigger id="state">
+                                        <SelectValue placeholder="Select" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                    {settings.states.map((s) => (
+                                        <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                                    ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            <div className="grid gap-1.5">
+                                <Label htmlFor="status">Status</Label>
+                                <Select value={status} onValueChange={setStatus}>
+                                    <SelectTrigger id="status">
+                                        <SelectValue placeholder="Select" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                    {settings.statuses.map((s) => (
+                                        <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                                    ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="grid gap-1.5">
+                                <Label htmlFor="package">Package</Label>
+                                <Select value={packageId} onValueChange={setPackageId}>
+                                    <SelectTrigger id="package">
+                                        <SelectValue placeholder="Select" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                    {settings.packages.map((p) => (
+                                        <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                                    ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            <div className="grid gap-1.5">
+                                <Label htmlFor="classification">Classification</Label>
+                                <Select value={classification} onValueChange={setClassification}>
+                                    <SelectTrigger id="classification">
+                                        <SelectValue placeholder="Select" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                    {settings.classifications.map((c) => (
+                                        <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                                    ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+
+                        <div className="grid gap-1.5">
+                            <Label htmlFor="documentId">Document</Label>
+                            <Select value={documentId} onValueChange={setDocumentId}>
+                                <SelectTrigger id="documentId">
+                                    <SelectValue placeholder="Select document" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {documents.map((doc) => (
+                                        <SelectItem key={doc.id} value={doc.id}>
+                                            {doc.code ? `${doc.code} - ` : ""}{doc.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div className="grid gap-1.5">
+                            <Label htmlFor="reviewer">Reviewer</Label>
+                            <Select value={reviewerId} onValueChange={setReviewerId}>
+                                <SelectTrigger id="reviewer">
+                                    <SelectValue placeholder="Select reviewer" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {members.map((m) => (
+                                        <SelectItem key={m.id} value={m.id}>
+                                            {m.firstName} {m.lastName} ({m.role})
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
                         </div>
 
                         <div className="grid gap-1.5">
