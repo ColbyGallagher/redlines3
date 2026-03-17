@@ -50,6 +50,8 @@ type NormalizedReview = {
   dueDateSmeReview?: string
   dueDateIssueComments?: string
   dueDateReplies?: string
+  state?: string | null
+  specificStatus?: string | null
   project: {
     id: string
     projectNumber: string
@@ -98,6 +100,8 @@ export type ProjectReviewSummary = {
   status: string
   dueDate?: string
   dueDateType?: "client" | "consultant" | "reply"
+  state?: string | null
+  specificStatus?: string | null
   daysUntilDue?: number
   isOverdue: boolean
   isUpcoming: boolean
@@ -201,6 +205,8 @@ function mapReview(row: ReviewWithRelations, project: ProjectWithRelations): Nor
     dueDateSmeReview: row.due_date_sme_review ?? undefined,
     dueDateIssueComments: row.due_date_issue_comments ?? undefined,
     dueDateReplies: row.due_date_replies ?? undefined,
+    state: row.state ?? null,
+    specificStatus: row.specific_status ?? null,
     project: {
       id: project.id,
       projectNumber: project.project_number,
@@ -294,6 +300,8 @@ function calculateReviewSummaries(today: Date, reviews: NormalizedReview[], proj
       reviewName: review.reviewName,
       milestone: review.milestone,
       status: (projectStatuses ?? []).find(s => s.id === review.status)?.name ?? review.status,
+      state: review.state,
+      specificStatus: review.specificStatus,
       dueDate: dueDateIso,
       dueDateType: primaryDueDate?.type,
       daysUntilDue,

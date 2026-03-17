@@ -3,13 +3,22 @@
 import React, { useEffect, useMemo, useState, useCallback, useRef } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Calendar, Clock, Download, FileText, MapPin, Trash2, Users, ChevronRight, ChevronDown, Layers } from "lucide-react"
+import { Calendar, Clock, Download, FileText, MapPin, Trash2, Users, ChevronRight, ChevronDown, Layers, ArrowUpDown, Filter, Search, X, ChevronUp } from "lucide-react"
 import { toast } from "sonner"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Input } from "@/components/ui/input"
 import {
   Dialog,
   DialogContent,
@@ -38,13 +47,24 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb"
 import type { ReviewDetail } from "@/lib/data/reviews"
+import { deleteDocument } from "@/lib/actions/documents"
+import { updateReviewLifecycle, getReviewTimelineProgress, type ReviewTimelineProgress } from "@/lib/actions/reviews"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { useTransition } from "react"
 import { cn } from "@/lib/utils"
 import { UploadDocumentDialog } from "@/components/reviews/upload-document-dialog"
 import { AddReviewerDialog } from "@/components/reviews/add-reviewer-dialog"
-import { deleteDocument } from "@/lib/actions/documents"
+import { ReviewProgressBar } from "@/components/reviews/review-progress-bar"
 
 type ReviewDetailsViewProps = {
   review: ReviewDetail
+  isAdmin?: boolean
 }
 
 const statusVariantMap: Record<ReviewDetail["status"], { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
@@ -71,8 +91,15 @@ function formatFileSize(size: number | string | undefined | null) {
   return Math.round(bytes / 1024) + " KB"
 }
 
-export function ReviewDetailsView({ review }: ReviewDetailsViewProps) {
+export function ReviewDetailsView({ review, isAdmin }: ReviewDetailsViewProps) {
   const router = useRouter()
+  const [isPending, startTransition] = useTransition()
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [pendingUpdate, setPendingUpdate] = useState<{
+    field: "state" | "status";
+    value: string;
+  } | null>(null)
+  
   const statusBadge = statusVariantMap[review.status]
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [selectedDocument, setSelectedDocument] = useState<{ id: string; name: string } | null>(null)
@@ -84,6 +111,20 @@ export function ReviewDetailsView({ review }: ReviewDetailsViewProps) {
   const [isDeletingSelection, setIsDeletingSelection] = useState(false)
   const [expandedParents, setExpandedParents] = useState<string[]>([])
   
+  const [timelineProgress, setTimelineProgress] = useState<ReviewTimelineProgress | null>(null)
+
+  useEffect(() => {
+    async function fetchTimeline() {
+      try {
+        const data = await getReviewTimelineProgress(review.id)
+        setTimelineProgress(data)
+      } catch (error) {
+        console.error("Failed to fetch timeline progress:", error)
+      }
+    }
+    fetchTimeline()
+  }, [review.id])
+
   // Resizable columns state
   const [columnWidths, setColumnWidths] = useState({
     selection: 40,
@@ -99,6 +140,167 @@ export function ReviewDetailsView({ review }: ReviewDetailsViewProps) {
     uploaded: 150,
     actions: 250
   })
+
+  const [columnOrder, setColumnOrder] = useState<string[]>([
+    "name",
+    "code",
+    "state",
+    "milestone",
+    "suitability",
+    "version",
+    "revision",
+    "issues",
+    "fileSize",
+    "uploaded",
+    "actions",
+  ])
+
+  const [draggedColumn, setDraggedColumn] = useState<string | null>(null)
+  const [dragOverColumn, setDragOverColumn] = useState<string | null>(null)
+
+  const handleDragStart = (e: React.DragEvent, columnId: string) => {
+    if (columnId === "actions" || columnId === "selection") return
+    setDraggedColumn(columnId)
+    e.dataTransfer.setData("columnId", columnId)
+    e.dataTransfer.effectAllowed = "move"
+  }
+
+  const handleDragOver = (e: React.DragEvent, columnId: string) => {
+    if (columnId === "actions" || columnId === "selection") return
+    e.preventDefault()
+    setDragOverColumn(columnId)
+  }
+
+  const handleDragLeave = () => {
+    setDragOverColumn(null)
+  }
+
+  const handleDrop = (e: React.DragEvent, targetColumnId: string) => {
+    if (targetColumnId === "actions" || targetColumnId === "selection") return
+    e.preventDefault()
+    const sourceColumnId = e.dataTransfer.getData("columnId")
+    if (sourceColumnId === targetColumnId) {
+      setDraggedColumn(null)
+      setDragOverColumn(null)
+      return
+    }
+
+    const newOrder = [...columnOrder]
+    const sourceIndex = newOrder.indexOf(sourceColumnId)
+    const targetIndex = newOrder.indexOf(targetColumnId)
+
+    newOrder.splice(sourceIndex, 1)
+    newOrder.splice(targetIndex, 0, sourceColumnId)
+
+    setColumnOrder(newOrder)
+    setDraggedColumn(null)
+    setDragOverColumn(null)
+  }
+
+  const handleUpdate = (field: "state" | "status", value: string, skipConfirm = false) => {
+    if (skipConfirm) {
+      executeLifecycleUpdate(field, value)
+    } else {
+      setPendingUpdate({ field, value })
+      setConfirmOpen(true)
+    }
+  }
+
+  const executeLifecycleUpdate = (field: "state" | "status", value: string) => {
+    startTransition(async () => {
+      const result = await updateReviewLifecycle(review.id, review.project.id, {
+        [field]: value,
+      })
+      if (result.success) {
+        toast.success(result.message)
+        router.refresh()
+      } else {
+        toast.error(result.message)
+      }
+      setConfirmOpen(false)
+      setPendingUpdate(null)
+    })
+  }
+
+  // Sorting and Filtering state
+  const [sortConfig, setSortConfig] = useState<{ key: string | null; direction: "asc" | "desc" | null }>({
+    key: null,
+    direction: null,
+  })
+  const [columnFilters, setColumnFilters] = useState<Record<string, string>>({})
+
+  const handleSort = (key: string) => {
+    let direction: "asc" | "desc" | null = "asc"
+    if (sortConfig.key === key && sortConfig.direction === "asc") {
+      direction = "desc"
+    } else if (sortConfig.key === key && sortConfig.direction === "desc") {
+      direction = null
+    }
+
+    setSortConfig({ key: direction ? key : null, direction })
+  }
+
+  const handleFilterChange = (columnId: string, value: string) => {
+    setColumnFilters((prev) => {
+      const newFilters = { ...prev }
+      if (value) {
+        newFilters[columnId] = value
+      } else {
+        delete newFilters[columnId]
+      }
+      return newFilters
+    })
+  }
+
+  const getUniqueValues = (columnId: string) => {
+    const values = new Set<string>()
+    review.documents.forEach((doc) => {
+      const val = (doc as any)[columnId]
+      if (val !== undefined && val !== null && val !== "") {
+        values.add(String(val))
+      }
+    })
+    return Array.from(values).sort()
+  }
+
+  const filteredAndSortedDocuments = useMemo(() => {
+    let docs = [...review.documents]
+
+    // Apply filtering
+    if (Object.keys(columnFilters).length > 0) {
+      docs = docs.filter((doc) => {
+        return Object.entries(columnFilters).every(([key, filterValue]) => {
+          const docValue = String((doc as any)[key] || "").toLowerCase()
+          return docValue.includes(filterValue.toLowerCase())
+        })
+      })
+
+      // If a child matches, we must ensure its parent is also in the list if it's not already
+      const topLevelDocs = docs.filter((d) => !d.parentId)
+      const childDocs = docs.filter((d) => d.parentId)
+      
+      const parentsOfVisibleChildren = review.documents.filter(parent => 
+        childDocs.some(child => child.parentId === parent.id) && !topLevelDocs.some(d => d.id === parent.id)
+      )
+      
+      docs = [...topLevelDocs, ...childDocs, ...parentsOfVisibleChildren]
+    }
+
+    // Apply sorting
+    if (sortConfig.key && sortConfig.direction) {
+      const { key, direction } = sortConfig
+      docs.sort((a, b) => {
+        const valA = String((a as any)[key] || "").toLowerCase()
+        const valB = String((b as any)[key] || "").toLowerCase()
+
+        if (valA < valB) return direction === "asc" ? -1 : 1
+        if (valA > valB) return direction === "asc" ? 1 : -1
+        return 0
+      })
+    }
+
+    return docs
+  }, [review.documents, sortConfig, columnFilters])
 
   const isResizing = useRef<string | null>(null)
   const startX = useRef<number>(0)
@@ -275,6 +477,151 @@ export function ReviewDetailsView({ review }: ReviewDetailsViewProps) {
     []
   )
 
+  const sortedDocumentColumns = useMemo(() => {
+    return columnOrder.map((id) => documentColumns.find((col) => col.id === id)!)
+  }, [columnOrder, documentColumns])
+
+  const renderCell = (columnId: string, document: any, review: ReviewDetail, isChild: boolean = false) => {
+    const children = review.documents.filter((d) => d.parentId === document.id)
+    const hasChildren = children.length > 0
+    const isExpanded = expandedParents.includes(document.id)
+
+    switch (columnId) {
+      case "name":
+        return (
+          <TableCell style={{ width: columnWidths.name }} className={cn("font-medium", isChild && "pl-10")}>
+            <div className="flex items-center gap-2">
+              {!isChild && hasChildren && (
+                <Button variant="ghost" size="icon" className="h-6 w-6 p-0" onClick={() => toggleParentExpansion(document.id)}>
+                  {isExpanded ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
+                </Button>
+              )}
+              {isChild && (
+                <div className="size-5 rounded bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold">
+                  {document.pageNumber}
+                </div>
+              )}
+              {hasChildren && !isChild ? (
+                <div className="flex items-center gap-2 text-primary">
+                  <Layers className="size-4" />
+                  <span>{document.documentName}</span>
+                  <Badge variant="secondary" className="text-[10px] h-4 px-1">
+                    {children.length} drawings
+                  </Badge>
+                </div>
+              ) : (
+                <Link
+                  href={`/reviews/${review.id}/documents/${document.id}${isChild && document.pageNumber ? `?page=${document.pageNumber}` : ""}`}
+                  className={cn("text-primary hover:underline font-medium text-left", isChild && "text-xs")}
+                >
+                  {document.documentName}
+                </Link>
+              )}
+            </div>
+          </TableCell>
+        )
+      case "code":
+        return (
+          <TableCell style={{ width: columnWidths.code }} className={cn("truncate", isChild && "text-xs")}>
+            {document.documentCode}
+          </TableCell>
+        )
+      case "state":
+        return (
+          <TableCell style={{ width: columnWidths.state }} className={cn("truncate", isChild && "text-xs")}>
+            {document.state}
+          </TableCell>
+        )
+      case "milestone":
+        return (
+          <TableCell style={{ width: columnWidths.milestone }} className={cn("truncate", isChild && "text-xs")}>
+            {document.milestone}
+          </TableCell>
+        )
+      case "suitability":
+        return (
+          <TableCell style={{ width: columnWidths.suitability }} className={cn("truncate", isChild && "text-xs")}>
+            {document.suitability}
+          </TableCell>
+        )
+      case "version":
+        return (
+          <TableCell style={{ width: columnWidths.version }} className={cn("truncate", isChild && "text-xs")}>
+            {document.version}
+          </TableCell>
+        )
+      case "revision":
+        return (
+          <TableCell style={{ width: columnWidths.revision }} className={cn("truncate", isChild && "text-xs")}>
+            {document.revision}
+          </TableCell>
+        )
+      case "issues":
+        return (
+          <TableCell style={{ width: columnWidths.issues }} className={cn("truncate", isChild && "text-xs")}>
+            {hasChildren && !isChild
+              ? children.reduce((acc, child) => acc + (issuesPerDocument[child.id] ?? 0), 0) + (issuesPerDocument[document.id] ?? 0)
+              : issuesPerDocument[document.id] ?? 0}
+          </TableCell>
+        )
+      case "fileSize":
+        return (
+          <TableCell style={{ width: columnWidths.fileSize }} className={cn("truncate", isChild && "text-xs")}>
+            {formatFileSize(document.fileSize)}
+          </TableCell>
+        )
+      case "uploaded":
+        return (
+          <TableCell style={{ width: columnWidths.uploaded }} className={cn("truncate", isChild && "text-xs")}>
+            {formatDate(document.uploadedAt)}
+          </TableCell>
+        )
+      case "actions":
+        return (
+          <TableCell style={{ width: columnWidths.actions }} className="text-right">
+            {!isChild ? (
+              <>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="gap-1"
+                  onClick={() => router.push(`/reviews/${review.id}/documents/${document.id}`)}
+                >
+                  <FileText className="size-4" />
+                  Preview
+                </Button>
+                <Button variant="ghost" size="sm" className="gap-1">
+                  <Download className="size-4" />
+                  Download
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="gap-1 text-destructive hover:text-destructive hover:bg-destructive/10"
+                  onClick={() => openDeleteDialog(document.id, document.documentName)}
+                >
+                  <Trash2 className="size-4" />
+                  Delete
+                </Button>
+              </>
+            ) : (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2"
+                onClick={() => router.push(`/reviews/${review.id}/documents/${document.id}${document.pageNumber ? `?page=${document.pageNumber}` : ""}`)}
+              >
+                <FileText className="size-3" />
+                <span className="text-[10px]">Preview</span>
+              </Button>
+            )}
+          </TableCell>
+        )
+      default:
+        return null
+    }
+  }
+
   const issueColumns = useMemo(
     () => [
       { id: "issueNumber", label: "Issue #" },
@@ -332,13 +679,82 @@ export function ReviewDetailsView({ review }: ReviewDetailsViewProps) {
               <Users className="size-4" />
               {review.reviewers.length} assigned
             </span>
+            <Separator orientation="vertical" className="hidden h-4 lg:block" />
+            <div className="flex items-center gap-2">
+              <Badge 
+                variant="outline" 
+                className={cn(
+                  "flex items-center gap-1",
+                  isAdmin && "cursor-pointer hover:bg-accent transition-colors"
+                )}
+                onClick={() => isAdmin && handleUpdate("state", review.state === "Complete" ? "Active" : "Complete")}
+              >
+                <Layers className="size-3" />
+                {review.state}
+              </Badge>
+              <Badge 
+                variant="outline" 
+                className={cn(
+                  "flex items-center gap-1",
+                  isAdmin && "cursor-pointer hover:bg-accent transition-colors"
+                )}
+                onClick={() => isAdmin && handleUpdate("status", review.specificStatus === "Resolved" ? "In Progress" : "Resolved")}
+              >
+                <Clock className="size-3" />
+                {review.specificStatus}
+              </Badge>
+            </div>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {isAdmin && (
+            <div className="flex items-center gap-2 mr-2">
+              <Select
+                disabled={isPending}
+                value={review.state || "Active"}
+                onValueChange={(v) => handleUpdate("state", v)}
+              >
+                <SelectTrigger className="h-9 w-[110px]">
+                  <SelectValue placeholder="State" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Active">Active</SelectItem>
+                  <SelectItem value="Complete">Complete</SelectItem>
+                  <SelectItem value="Archived">Archived</SelectItem>
+                </SelectContent>
+              </Select>
+              
+              <Select
+                disabled={isPending}
+                value={review.specificStatus || "In Progress"}
+                onValueChange={(v) => handleUpdate("status", v)}
+              >
+                <SelectTrigger className="h-9 w-[160px]">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="In Progress">In Progress</SelectItem>
+                  <SelectItem value="Awaiting Design Review">Awaiting Design Review</SelectItem>
+                  <SelectItem value="Awaiting Client Review">Awaiting Client Review</SelectItem>
+                  <SelectItem value="Resolved">Resolved</SelectItem>
+                  <SelectItem value="Closed">Closed</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <Button variant="outline">Export summary</Button>
           <Button>Create issue</Button>
         </div>
       </div>
+
+      {timelineProgress && (
+        <Card className="p-4 bg-muted/20">
+          <ReviewProgressBar 
+            startDate={timelineProgress.startDate} 
+            phases={timelineProgress.phases} 
+          />
+        </Card>
+      )}
 
       <section className="grid gap-4 lg:grid-cols-[2fr_1fr]">
         <Card>
@@ -502,22 +918,99 @@ export function ReviewDetailsView({ review }: ReviewDetailsViewProps) {
                       onCheckedChange={(checked) => handleSelectAllDocuments(checked)}
                       aria-label="Select all documents"
                     />
-                    <div 
-                        onMouseDown={(e) => handleMouseDown(e, "selection")}
-                        className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-primary/50 group-hover:bg-primary/20 transition-colors"
+                    <div
+                      onMouseDown={(e) => handleMouseDown(e, "selection")}
+                      className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-primary/50 group-hover:bg-primary/20 transition-colors"
                     />
                   </TableHead>
-                  {documentColumns.map((column) => (
-                    <TableHead 
-                      key={column.id} 
+                  {sortedDocumentColumns.map((column) => (
+                    <TableHead
+                      key={column.id}
                       style={{ width: columnWidths[column.id as keyof typeof columnWidths] }}
-                      className="relative group"
+                      className={cn(
+                        "relative group cursor-default",
+                        draggedColumn === column.id && "opacity-50",
+                        dragOverColumn === column.id && "bg-primary/10 border-r-2 border-r-primary"
+                      )}
+                      draggable={column.id !== "actions"}
+                      onDragStart={(e) => handleDragStart(e, column.id)}
+                      onDragOver={(e) => handleDragOver(e, column.id)}
+                      onDragLeave={handleDragLeave}
+                      onDrop={(e) => handleDrop(e, column.id)}
                     >
-                      {column.label}
+                      <div className="flex items-center gap-1">
+                        <span 
+                          className="cursor-pointer hover:text-primary transition-colors flex items-center gap-1"
+                          onClick={() => column.id !== "actions" && handleSort(column.id)}
+                        >
+                          {column.label}
+                          {sortConfig.key === column.id && (
+                            sortConfig.direction === "asc" ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />
+                          )}
+                        </span>
+                        
+                        {column.id !== "actions" && (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="size-6 h-6 w-6 p-0 hover:bg-transparent">
+                                <Filter className={cn("size-3", columnFilters[column.id] ? "text-primary fill-primary/10" : "text-muted-foreground")} />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="start" className="w-48">
+                              <DropdownMenuLabel className="text-xs">Filter {column.label}</DropdownMenuLabel>
+                              <div className="p-2">
+                                <div className="relative">
+                                  <Search className="absolute left-2 top-2.5 size-3 text-muted-foreground" />
+                                  <Input 
+                                    placeholder="Search..." 
+                                    className="h-8 pl-7 text-xs"
+                                    value={columnFilters[column.id] || ""}
+                                    onChange={(e) => handleFilterChange(column.id, e.target.value)}
+                                  />
+                                  {columnFilters[column.id] && (
+                                    <Button 
+                                      variant="ghost" 
+                                      size="icon" 
+                                      className="absolute right-0 top-0 size-8 h-8 w-8 p-0"
+                                      onClick={() => handleFilterChange(column.id, "")}
+                                    >
+                                      <X className="size-3" />
+                                    </Button>
+                                  )}
+                                </div>
+                              </div>
+                              <DropdownMenuSeparator />
+                              <div className="max-h-40 overflow-y-auto">
+                                {getUniqueValues(column.id).map((val) => (
+                                  <DropdownMenuItem 
+                                    key={val} 
+                                    className="text-xs"
+                                    onClick={() => handleFilterChange(column.id, val)}
+                                  >
+                                    {val}
+                                  </DropdownMenuItem>
+                                ))}
+                              </div>
+                              {columnFilters[column.id] && (
+                                <>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem 
+                                    className="text-xs text-destructive focus:text-destructive"
+                                    onClick={() => handleFilterChange(column.id, "")}
+                                  >
+                                    Clear filter
+                                  </DropdownMenuItem>
+                                </>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        )}
+                      </div>
+                      
                       {column.id !== "actions" && (
-                        <div 
-                           onMouseDown={(e) => handleMouseDown(e, column.id as keyof typeof columnWidths)}
-                           className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-primary/50 group-hover:bg-primary/20 transition-colors"
+                        <div
+                          onMouseDown={(e) => handleMouseDown(e, column.id as keyof typeof columnWidths)}
+                          className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-primary/50 group-hover:bg-primary/20 transition-colors"
                         />
                       )}
                     </TableHead>
@@ -525,12 +1018,12 @@ export function ReviewDetailsView({ review }: ReviewDetailsViewProps) {
                 </TableRow>
               </TableHeader>
             <TableBody>
-              {review.documents
-                .filter(doc => !doc.parentId) // Only show top-level documents initially
+              {filteredAndSortedDocuments
+                .filter((doc) => !doc.parentId) // Only show top-level documents initially
                 .map((document) => {
-                  const children = review.documents.filter(d => d.parentId === document.id)
+                  const children = filteredAndSortedDocuments.filter((d) => d.parentId === document.id)
                   const isExpanded = expandedParents.includes(document.id)
-                  const hasChildren = children.length > 0
+                  const hasChildren = children.length > 0 || review.documents.some(d => d.parentId === document.id)
 
                   return (
                     <React.Fragment key={document.id}>
@@ -542,118 +1035,31 @@ export function ReviewDetailsView({ review }: ReviewDetailsViewProps) {
                             aria-label={`Select ${document.documentName}`}
                           />
                         </TableCell>
-                        <TableCell style={{ width: columnWidths.name }} className="font-medium">
-                          <div className="flex items-center gap-2">
-                            {hasChildren && (
-                              <Button 
-                                variant="ghost" 
-                                size="icon" 
-                                className="h-6 w-6 p-0" 
-                                onClick={() => toggleParentExpansion(document.id)}
-                              >
-                                {isExpanded ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
-                              </Button>
-                            )}
-                            {hasChildren ? (
-                                <div className="flex items-center gap-2 text-primary">
-                                    <Layers className="size-4" />
-                                    <span>{document.documentName}</span>
-                                    <Badge variant="secondary" className="text-[10px] h-4 px-1">{children.length} drawings</Badge>
-                                </div>
-                            ) : (
-                                <Link
-                                    href={`/reviews/${review.id}/documents/${document.id}`}
-                                    className="text-primary hover:underline font-medium text-left"
-                                >
-                                    {document.documentName}
-                                </Link>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell style={{ width: columnWidths.code }} className="truncate">{document.documentCode}</TableCell>
-                        <TableCell style={{ width: columnWidths.state }} className="truncate">{document.state}</TableCell>
-                        <TableCell style={{ width: columnWidths.milestone }} className="truncate">{document.milestone}</TableCell>
-                        <TableCell style={{ width: columnWidths.suitability }} className="truncate">{document.suitability}</TableCell>
-                        <TableCell style={{ width: columnWidths.version }} className="truncate">{document.version}</TableCell>
-                        <TableCell style={{ width: columnWidths.revision }} className="truncate">{document.revision}</TableCell>
-                          <TableCell style={{ width: columnWidths.issues }} className="truncate">
-                            {hasChildren 
-                                ? children.reduce((acc, child) => acc + (issuesPerDocument[child.id] ?? 0), 0) + (issuesPerDocument[document.id] ?? 0)
-                                : issuesPerDocument[document.id] ?? 0
-                            }
-                        </TableCell>
-                        <TableCell style={{ width: columnWidths.fileSize }} className="truncate">{formatFileSize(document.fileSize)}</TableCell>
-                        <TableCell style={{ width: columnWidths.uploaded }} className="truncate">{formatDate(document.uploadedAt)}</TableCell>
-                        <TableCell style={{ width: columnWidths.actions }} className="text-right">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="gap-1"
-                            onClick={() => router.push(`/reviews/${review.id}/documents/${document.id}`)}
-                          >
-                            <FileText className="size-4" />
-                            Preview
-                          </Button>
-                          <Button variant="ghost" size="sm" className="gap-1">
-                            <Download className="size-4" />
-                            Download
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="gap-1 text-destructive hover:text-destructive hover:bg-destructive/10"
-                            onClick={() => openDeleteDialog(document.id, document.documentName)}
-                          >
-                            <Trash2 className="size-4" />
-                            Delete
-                          </Button>
-                        </TableCell>
+                        {columnOrder.map((columnId) => (
+                          <React.Fragment key={columnId}>
+                            {renderCell(columnId, document, review)}
+                          </React.Fragment>
+                        ))}
                       </TableRow>
-                      
-                      {hasChildren && isExpanded && children.map((child) => (
-                        <TableRow key={child.id} className="bg-muted/5 border-l-2 border-l-primary/30">
-                          <TableCell style={{ width: columnWidths.selection }} className="px-2">
-                            <Checkbox
-                              checked={selectedDocumentIds.includes(child.id)}
-                              onCheckedChange={(checked) => toggleDocumentSelection(child.id)}
-                              aria-label={`Select ${child.documentName}`}
-                            />
-                          </TableCell>
-                          <TableCell style={{ width: columnWidths.name }} className="pl-10 font-medium">
-                            <div className="flex items-center gap-2">
-                                <div className="size-5 rounded bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold">
-                                    {child.pageNumber}
-                                </div>
-                                <Link
-                                    href={`/reviews/${review.id}/documents/${child.id}${child.pageNumber ? `?page=${child.pageNumber}` : ""}`}
-                                    className="text-primary hover:underline font-medium text-left text-xs"
-                                >
-                                    {child.documentName}
-                                </Link>
-                            </div>
-                          </TableCell>
-                          <TableCell style={{ width: columnWidths.code }} className="text-xs truncate">{child.documentCode}</TableCell>
-                          <TableCell style={{ width: columnWidths.state }} className="text-xs truncate">{child.state}</TableCell>
-                          <TableCell style={{ width: columnWidths.milestone }} className="text-xs truncate">{child.milestone}</TableCell>
-                          <TableCell style={{ width: columnWidths.suitability }} className="text-xs truncate">{child.suitability}</TableCell>
-                          <TableCell style={{ width: columnWidths.version }} className="text-xs truncate">{child.version}</TableCell>
-                          <TableCell style={{ width: columnWidths.revision }} className="text-xs truncate">{child.revision}</TableCell>
-                          <TableCell style={{ width: columnWidths.issues }} className="text-xs truncate">{issuesPerDocument[child.id] ?? 0}</TableCell>
-                          <TableCell style={{ width: columnWidths.fileSize }} className="text-xs truncate">{formatFileSize(child.fileSize)}</TableCell>
-                          <TableCell style={{ width: columnWidths.uploaded }} className="text-xs truncate">{formatDate(child.uploadedAt)}</TableCell>
-                          <TableCell style={{ width: columnWidths.actions }} className="text-right">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 px-2"
-                              onClick={() => router.push(`/reviews/${review.id}/documents/${child.id}${child.pageNumber ? `?page=${child.pageNumber}` : ""}`)}
-                            >
-                              <FileText className="size-3" />
-                              <span className="text-[10px]">Preview</span>
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
+
+                      {hasChildren &&
+                        isExpanded &&
+                        children.map((child) => (
+                          <TableRow key={child.id} className="bg-muted/5 border-l-2 border-l-primary/30">
+                            <TableCell style={{ width: columnWidths.selection }} className="px-2">
+                              <Checkbox
+                                checked={selectedDocumentIds.includes(child.id)}
+                                onCheckedChange={(checked) => toggleDocumentSelection(child.id)}
+                                aria-label={`Select ${child.documentName}`}
+                              />
+                            </TableCell>
+                            {columnOrder.map((columnId) => (
+                              <React.Fragment key={columnId}>
+                                {renderCell(columnId, child, review, true)}
+                              </React.Fragment>
+                            ))}
+                          </TableRow>
+                        ))}
                     </React.Fragment>
                   )
                 })}
@@ -817,6 +1223,24 @@ export function ReviewDetailsView({ review }: ReviewDetailsViewProps) {
             </Button>
             <Button variant="destructive" onClick={handleBulkDelete} disabled={isDeletingSelection}>
               {isDeletingSelection ? "Deleting..." : "Confirm Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm Lifecycle Change</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to change the {pendingUpdate?.field} of this review to <strong>{pendingUpdate?.value}</strong>?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmOpen(false)} disabled={isPending}>
+              Cancel
+            </Button>
+            <Button onClick={() => pendingUpdate && executeLifecycleUpdate(pendingUpdate.field, pendingUpdate.value)} disabled={isPending}>
+              {isPending ? "Updating..." : "Confirm"}
             </Button>
           </DialogFooter>
         </DialogContent>

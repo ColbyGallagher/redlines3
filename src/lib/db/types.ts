@@ -57,11 +57,27 @@ export type Review = {
   due_date_issue_comments: string | null
   due_date_replies: string | null
   project_id: string
+  state?: ReviewState | null
+  specific_status?: ReviewStatus | null
   status?: string | null
   summary?: string | null
+  start_date?: string | null
   created_at?: string | null
   updated_at?: string | null
 }
+
+export type ProjectReviewPhase = {
+  id: string
+  project_id: string
+  phase_name: string
+  duration_days: number
+  order_index: number
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+export type ReviewState = "Active" | "Complete" | "Archived"
+export type ReviewStatus = "Awaiting Design Review" | "Awaiting Client Review" | "In Progress" | "Resolved" | "Closed" | string
 
 export type Document = {
   id: string
@@ -261,6 +277,7 @@ export type Database = {
       project_users: TableDefinition<ProjectUser>
       project_packages: TableDefinition<ProjectPackage>
       project_classifications: TableDefinition<ProjectClassification>
+      project_review_phases: TableDefinition<ProjectReviewPhase>
     }
     Views: Record<string, never>
     Functions: Record<string, never>

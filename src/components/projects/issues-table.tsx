@@ -94,7 +94,7 @@ export function IssuesTable({ issues, summary }: IssuesTableProps) {
   }, [issues, searchTerm, statusFilter])
 
   return (
-    <Card className="lg:col-span-7 xl:col-span-8">
+    <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <div className="space-y-1">
           <CardTitle>Issues</CardTitle>

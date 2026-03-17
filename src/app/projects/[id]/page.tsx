@@ -3,6 +3,7 @@ import Link from "next/link"
 import { Settings2, Trash2 } from "lucide-react"
 
 import { InsightCallouts } from "@/components/projects/insight-callouts"
+import { createServerSupabaseClient } from "@/lib/supabase/server"
 import { IssuesTable } from "@/components/projects/issues-table"
 import { ProjectReviewsList } from "@/components/projects/project-reviews-list"
 import { ProjectSummaryHeader } from "@/components/projects/project-summary-header"
@@ -38,6 +39,28 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
 
   const roles = await getRoles()
 
+  const { data: { user } } = await (await createServerSupabaseClient()).auth.getUser()
+  
+  // Calculate if user can edit lifecycle - includes project 'admin', 'developer' OR global 'org admin', 'admin'
+  const projectMember = summary.members.find(m => m.id === user?.id)
+  const projectRole = projectMember?.role?.toLowerCase()
+  const hasProjectPermission = projectRole === "admin" || projectRole === "developer"
+  
+  // Also check global roles if not already permitted by project role
+  let canEditLifecycle = !!hasProjectPermission
+  if (!canEditLifecycle && user) {
+    const supabase = await createServerSupabaseClient()
+    const { data: orgRoles } = await (supabase.from("user_companies") as any)
+        .select(`roles:role_id (name)`)
+        .eq("user_id", user.id)
+        .eq("active", true)
+    
+    const globalRoles = (orgRoles || []).map((uc: any) => uc.roles?.name?.toLowerCase()).filter(Boolean)
+    canEditLifecycle = globalRoles.includes('org admin') || globalRoles.includes('admin')
+  }
+
+  const isAdmin = canEditLifecycle
+
   const showSuccessMessage = created === "1"
   const successBannerMessage = showSuccessMessage
     ? `Project “${summary.project.projectName}” created successfully.`
@@ -59,8 +82,8 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
       />
       <main className="flex flex-1 flex-col gap-6 p-6 pt-4">
         <InsightCallouts insights={summary.insights} />
-        <section className="grid gap-4 lg:grid-cols-12">
-          <ProjectReviewsList summary={summary} />
+        <section className="flex flex-col gap-6">
+          <ProjectReviewsList summary={summary} isAdmin={isAdmin} />
           <IssuesTable issues={summary.issues} summary={summary} />
         </section>
 

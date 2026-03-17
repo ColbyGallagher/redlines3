@@ -46,6 +46,8 @@ reviews [icon: check-square, color: green]{
   due_date_issue_comments date
   due_date_replies date
   project_id uuid
+  state text [default: 'Active']
+  specific_status text [default: 'In Progress']
 }
 
 review_users [icon: user-check, color: lightgreen]{

@@ -260,110 +260,6 @@ export function ProjectSettingsForm({ projectId }: ProjectSettingsFormProps) {
     }, [])
 
 
-    const handleDefaultReviewTimeChange = React.useCallback(
-        (index: number, field: "stage" | "days", value: string) => {
-            setFormState((prev) => {
-                if (!prev) return prev
-
-                const nextEntries = prev.defaultReviewTimes.map((entry, entryIndex) => {
-                    if (entryIndex !== index) return entry
-                    if (field === "days") {
-                        const days = Number.parseInt(value, 10)
-                        return {
-                            ...entry,
-                            days: Number.isFinite(days) ? Math.max(days, 0) : entry.days,
-                        }
-                    }
-
-                    return {
-                        ...entry,
-                        stage: value,
-                    }
-                })
-
-                return {
-                    ...prev,
-                    defaultReviewTimes: nextEntries,
-                }
-            })
-        },
-        []
-    )
-
-    const handleDefaultResponsePeriodChange = React.useCallback(
-        (index: number, field: "role" | "days", value: string) => {
-            setFormState((prev) => {
-                if (!prev) return prev
-
-                const nextEntries = prev.defaultResponsePeriods.map((entry, entryIndex) => {
-                    if (entryIndex !== index) return entry
-                    if (field === "days") {
-                        const days = Number.parseInt(value, 10)
-                        return {
-                            ...entry,
-                            days: Number.isFinite(days) ? Math.max(days, 0) : entry.days,
-                        }
-                    }
-
-                    return {
-                        ...entry,
-                        role: value,
-                    }
-                })
-
-                return {
-                    ...prev,
-                    defaultResponsePeriods: nextEntries,
-                }
-            })
-        },
-        []
-    )
-
-    const addDefaultReviewStage = React.useCallback(() => {
-        setFormState((prev) =>
-            prev
-                ? {
-                    ...prev,
-                    defaultReviewTimes: [...prev.defaultReviewTimes, { stage: "New stage", days: 5 }],
-                }
-                : prev
-        )
-    }, [])
-
-    const addDefaultResponsePeriod = React.useCallback(() => {
-        setFormState((prev) =>
-            prev
-                ? {
-                    ...prev,
-                    defaultResponsePeriods: [...prev.defaultResponsePeriods, { role: "New role", days: 5 }],
-                }
-                : prev
-        )
-    }, [])
-
-    const removeDefaultReviewStage = React.useCallback((index: number) => {
-        setFormState((prev) =>
-            prev
-                ? {
-                    ...prev,
-                    defaultReviewTimes: prev.defaultReviewTimes.filter((_, entryIndex) => entryIndex !== index),
-                }
-                : prev
-        )
-    }, [])
-
-    const removeDefaultResponsePeriod = React.useCallback((index: number) => {
-        setFormState((prev) =>
-            prev
-                ? {
-                    ...prev,
-                    defaultResponsePeriods: prev.defaultResponsePeriods.filter((_, entryIndex) => entryIndex !== index),
-                }
-                : prev
-        )
-    }, [])
-
     const handleSave = React.useCallback(async () => {
         if (!formState) return false
 
@@ -381,8 +277,6 @@ export function ProjectSettingsForm({ projectId }: ProjectSettingsFormProps) {
                         disciplines: formState.disciplines,
                         states: formState.states,
                         suitabilities: formState.suitabilities,
-                        defaultReviewTimes: formState.defaultReviewTimes,
-                        defaultResponsePeriods: formState.defaultResponsePeriods,
                         extraction_setups: formState.extraction_setups,
                     },
                 }),
@@ -396,13 +290,15 @@ export function ProjectSettingsForm({ projectId }: ProjectSettingsFormProps) {
                     disciplines: [...formState.disciplines],
                     states: [...formState.states],
                     suitabilities: [...formState.suitabilities],
-                    defaultReviewTimes: formState.defaultReviewTimes.map(t => ({ ...t })),
-                    defaultResponsePeriods: formState.defaultResponsePeriods.map(p => ({ ...p })),
+                    defaultReviewTimes: settings?.defaultReviewTimes || [],
+                    defaultResponsePeriods: settings?.defaultResponsePeriods || [],
                     extraction_settings: settings?.extraction_settings ? { ...settings.extraction_settings } : {},
                     extraction_setups: [...formState.extraction_setups],
                     packages: [...formState.packages],
                     classifications: [...formState.classifications],
                 }
+                setSettings(updatedSettings)
+                return true
                 setSettings(updatedSettings)
                 return true
             } else {
@@ -488,59 +384,6 @@ export function ProjectSettingsForm({ projectId }: ProjectSettingsFormProps) {
                                             <Button type="button" variant="link" onClick={handleAddSetup}>Create your first setup</Button>
                                         </div>
                                     )}
-                                </div>
-                            </section>
-
-
-                            <section className="space-y-4">
-                                <header className="space-y-1">
-                                    <h2 className="text-lg font-semibold">Review timelines</h2>
-                                    <p className="text-muted-foreground text-sm">Set expectations for review durations and responses in working days.</p>
-                                </header>
-                                <div className="grid gap-8 md:grid-cols-2">
-                                    <div className="space-y-3">
-                                        <div className="flex items-center justify-between">
-                                            <h3 className="text-sm font-medium uppercase tracking-wide text-muted-foreground">Default review times</h3>
-                                            <Button type="button" size="sm" variant="outline" onClick={addDefaultReviewStage}>
-                                                Add stage
-                                            </Button>
-                                        </div>
-                                        <div className="space-y-3">
-                                            {formState.defaultReviewTimes.map((entry, index) => (
-                                                <TimelineEntry
-                                                    key={`${entry.stage}-${index}`}
-                                                    label="Stage"
-                                                    name={entry.stage}
-                                                    days={entry.days}
-                                                    onNameChange={(value) => handleDefaultReviewTimeChange(index, "stage", value)}
-                                                    onDaysChange={(value) => handleDefaultReviewTimeChange(index, "days", value)}
-                                                    onRemove={() => removeDefaultReviewStage(index)}
-                                                />
-                                            ))}
-                                        </div>
-                                    </div>
-
-                                    <div className="space-y-3">
-                                        <div className="flex items-center justify-between">
-                                            <h3 className="text-sm font-medium uppercase tracking-wide text-muted-foreground">Default response periods</h3>
-                                            <Button type="button" size="sm" variant="outline" onClick={addDefaultResponsePeriod}>
-                                                Add role
-                                            </Button>
-                                        </div>
-                                        <div className="space-y-3">
-                                            {formState.defaultResponsePeriods.map((entry, index) => (
-                                                <TimelineEntry
-                                                    key={`${entry.role}-${index}`}
-                                                    label="Role"
-                                                    name={entry.role}
-                                                    days={entry.days}
-                                                    onNameChange={(value) => handleDefaultResponsePeriodChange(index, "role", value)}
-                                                    onDaysChange={(value) => handleDefaultResponsePeriodChange(index, "days", value)}
-                                                    onRemove={() => removeDefaultResponsePeriod(index)}
-                                                />
-                                            ))}
-                                        </div>
-                                    </div>
                                 </div>
                             </section>
                         </>
