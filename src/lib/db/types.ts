@@ -243,6 +243,17 @@ export type ProjectUser = {
   company_name: string | null
 }
 
+export type ProjectReferenceDocument = {
+  id: string
+  project_id: string
+  file_name: string
+  file_size: number
+  content_type: string
+  storage_path: string
+  uploaded_by: string
+  created_at: string | null
+}
+
 type TableDefinition<T> = {
   Row: T
   Insert: {
@@ -278,6 +289,7 @@ export type Database = {
       project_packages: TableDefinition<ProjectPackage>
       project_classifications: TableDefinition<ProjectClassification>
       project_review_phases: TableDefinition<ProjectReviewPhase>
+      project_reference_documents: TableDefinition<ProjectReferenceDocument>
     }
     Views: Record<string, never>
     Functions: Record<string, never>

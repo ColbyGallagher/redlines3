@@ -47,11 +47,19 @@ export default async function ReviewPage({ params }: ReviewPageProps) {
         .eq("active", true)
     
     const globalRoles = (orgRoles || []).map((uc: any) => uc.roles?.name?.toLowerCase()).filter(Boolean)
-    canEditLifecycle = globalRoles.includes('org admin') || globalRoles.includes('admin')
+    canEditLifecycle = globalRoles.includes('org admin') || globalRoles.includes('admin') || globalRoles.includes('developer')
   }
 
   const isAdmin = canEditLifecycle
 
-  return <ReviewDetailsView review={review} isAdmin={isAdmin} />
+  // 3. Fetch project milestones for inline editing
+  const { data: milestoneData } = await (supabase.from("project_milestones") as any)
+    .select("name")
+    .eq("project_id", review.project.id)
+    .order("name")
+  
+  const availableMilestones = (milestoneData || []).map((m: any) => m.name)
+
+  return <ReviewDetailsView review={review} isAdmin={isAdmin} availableMilestones={availableMilestones} />
 }
 

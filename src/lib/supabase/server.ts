@@ -64,4 +64,22 @@ export function createServerSupabaseClientFromHeaders() {
   return createServerSupabaseClient()
 }
 
+import { createClient } from "@supabase/supabase-js"
 
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+export async function createServerAdminClient() {
+  if (!supabaseServiceKey) {
+    throw new Error("SUPABASE_SERVICE_ROLE_KEY is missing from environment variables.")
+  }
+  
+  return createClient<Database>(supabaseUrl, supabaseServiceKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+    db: {
+      schema: "public",
+    },
+  })
+}

@@ -60,6 +60,7 @@ type NormalizedReview = {
   }
   documents: NormalizedDocument[]
   issues: NormalizedIssue[]
+  reviewers: ReviewUser[]
   lastUpdated?: string | null
 }
 
@@ -91,6 +92,7 @@ type NormalizedIssue = {
   comment?: string | null
   commentCoordinates?: string | null
   pageNumber?: number | null
+  createdByUserId?: string | null
 }
 
 export type ProjectReviewSummary = {
@@ -105,6 +107,13 @@ export type ProjectReviewSummary = {
   daysUntilDue?: number
   isOverdue: boolean
   isUpcoming: boolean
+  issueCount: number
+  documentCount: number
+  reviewerStats: {
+    total: number
+    complete: number
+    notStarted: number
+  }
 }
 
 export type ProjectIssueSummary = {
@@ -195,7 +204,11 @@ type PrimaryDueDate = {
   type: PrimaryDueDateType
 }
 
-function mapReview(row: ReviewWithRelations, project: ProjectWithRelations): NormalizedReview {
+function mapReview(row: ReviewRow & {
+  documents: DocumentRow[] | null
+  issues: IssueRow[] | null
+  review_users?: Array<Database["public"]["Tables"]["review_users"]["Row"] & { user: Database["public"]["Tables"]["users"]["Row"] | null }> | null
+}, project: ProjectWithRelations): NormalizedReview {
   return {
     id: row.id,
     reviewName: row.review_name,
@@ -213,6 +226,17 @@ function mapReview(row: ReviewWithRelations, project: ProjectWithRelations): Nor
       projectName: project.project_name,
       projectLocation: project.project_location ?? null,
     },
+    reviewers: (row.review_users ?? []).map(ru => ({
+      id: ru.user?.id ?? ru.user_id,
+      firstName: ru.user?.first_name ?? "",
+      lastName: ru.user?.last_name ?? "",
+      email: ru.user?.email ?? "",
+      jobTitle: ru.user?.job_title ?? "",
+      role: ru.role ?? "Reviewer",
+      avatarFallback: toTitleCaseFallback(ru.user?.first_name ?? "", ru.user?.last_name ?? ""),
+      company: "ColbyGallagher",
+      status: "Active",
+    })),
     documents: (row.documents ?? []).map((document) => ({
       id: document.id,
       documentName: document.document_name,
@@ -246,6 +270,7 @@ function mapReview(row: ReviewWithRelations, project: ProjectWithRelations): Nor
         comment: issue.comment ?? null,
         commentCoordinates: issue.comment_coordinates ?? null,
         pageNumber: issue.page_number ?? null,
+        createdByUserId: issue.created_by_user_id ?? null,
       }
     }),
     lastUpdated: row.updated_at ?? row.created_at ?? null,
@@ -295,6 +320,26 @@ function calculateReviewSummaries(today: Date, reviews: NormalizedReview[], proj
       isActive,
     )
 
+    // Calculate reviewer stats - assuming all review_users are reviewers for now
+    // In a real app, we might check for a 'Complete' flag or similar
+    // For now, if we don't have a status, we'll assume they haven't started if there are 0 issues raised by them
+    const reviewerStats = {
+      total: review.reviewers?.length ?? 0,
+      complete: 0, // Placeholder: need a way to track completion
+      notStarted: 0,
+    }
+
+    if (review.reviewers) {
+      review.reviewers.forEach(reviewer => {
+        const issuesByReviewer = review.issues.filter(i => i.createdByUserId === reviewer.id).length
+        if (issuesByReviewer > 0) {
+          reviewerStats.complete++
+        } else {
+          reviewerStats.notStarted++
+        }
+      })
+    }
+
     return {
       id: review.id,
       reviewName: review.reviewName,
@@ -307,6 +352,9 @@ function calculateReviewSummaries(today: Date, reviews: NormalizedReview[], proj
       daysUntilDue,
       isOverdue,
       isUpcoming,
+      issueCount: review.issues.length,
+      documentCount: review.documents.length,
+      reviewerStats,
     }
   })
 }
@@ -567,7 +615,7 @@ export async function getProjectSummaryById(projectId: string): Promise<ProjectS
     const supabase = await createServerSupabaseClient()
     const { data, error } = await supabase
       .from("projects")
-      .select("*, reviews(*, documents(*), issues(*)), project_milestones(*), project_statuses(*), project_importances(*), project_disciplines(*), project_states(*), project_suitabilities(*), project_review_stages(*), project_response_roles(*), project_users(*, user:users(*), roles:roles(*)), project_packages(*), project_classifications(*)")
+      .select("*, reviews(*, documents(*), issues(*), review_users(*, user:users(*))), project_milestones(*), project_statuses(*), project_importances(*), project_disciplines(*), project_states(*), project_suitabilities(*), project_review_stages(*), project_response_roles(*), project_users(*, user:users(*), roles:roles(*)), project_packages(*), project_classifications(*)")
       .eq("id", projectId)
       .maybeSingle()
 

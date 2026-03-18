@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache"
 import { createServerSupabaseClient } from "@/lib/supabase/server"
 import type { Database, ProjectReviewPhase } from "@/lib/db/types"
 import { formatName, toTitleCaseFallback } from "@/lib/utils/user-utils"
+import type { ReviewUser } from "@/lib/data/reviews"
 
 export type AddReviewerState = {
     success?: boolean
@@ -72,12 +73,12 @@ export async function getAllUsers(): Promise<ReviewUser[]> {
 export async function updateReviewLifecycle(
     reviewId: string,
     projectId: string,
-    payload: { state?: string; status?: string }
+    payload: { state?: string; status?: string; specificStatus?: string; milestone?: string; dueDate?: string }
 ): Promise<{ success: boolean; message: string }> {
     const supabase = await createServerSupabaseClient()
 
     try {
-        // 1. Verify admin role
+        // 1. Verify roles
         const { data: userData, error: userError } = await supabase.auth.getUser()
         if (userError || !userData.user) {
             return { success: false, message: "Authentication required." }
@@ -89,9 +90,8 @@ export async function updateReviewLifecycle(
             .eq("user_id", userData.user.id)
             .single()
 
-        const projectRole = (memberData as any)?.role
+        const projectRole = (memberData as any)?.role?.toLowerCase()
         
-        // Also check if they are an org admin or generic admin across all companies
         const { data: orgRoles, error: orgRolesError } = await (supabase.from("user_companies") as any)
             .select(`
                 roles:role_id (
@@ -102,29 +102,44 @@ export async function updateReviewLifecycle(
             .eq("active", true)
 
         const globalRoles = (orgRoles || []).map((uc: any) => uc.roles?.name?.toLowerCase()).filter(Boolean)
-        const isOrgAdmin = globalRoles.includes('org admin') || globalRoles.includes('admin')
+        const isGlobalAuthorized = globalRoles.includes('org admin') || globalRoles.includes('admin') || globalRoles.includes('developer')
 
-        if (memberError && !isOrgAdmin) {
+        if (memberError && !isGlobalAuthorized) {
             return { success: false, message: "Unauthorized. Role required." }
         }
 
         const allowedProjectRoles = ["admin", "developer"]
-        if (!isOrgAdmin && !allowedProjectRoles.includes(projectRole)) {
+        if (!isGlobalAuthorized && !allowedProjectRoles.includes(projectRole)) {
             return { success: false, message: "Unauthorized. Admin or Developer role required." }
         }
 
         // 2. Perform update
         const updatePayload: any = {}
-        if (payload.state) updatePayload.state = payload.state
-        if (payload.status) updatePayload.specific_status = payload.status
+        if (payload.state !== undefined) updatePayload.state = payload.state
+        if (payload.status !== undefined) updatePayload.status = payload.status
+        if (payload.specificStatus !== undefined) updatePayload.specific_status = payload.specificStatus
+        if (payload.milestone !== undefined) updatePayload.milestone = payload.milestone
+        
+        // When updating due date from overview, update all relevant columns to ensure visibility
+        if (payload.dueDate !== undefined) {
+            updatePayload.due_date_sme_review = payload.dueDate
+            updatePayload.due_date_issue_comments = payload.dueDate
+            updatePayload.due_date_replies = payload.dueDate
+        }
 
-        const { error: updateError } = await (supabase.from("reviews") as any)
+        const { data: updateData, error: updateError } = await (supabase.from("reviews") as any)
             .update(updatePayload)
             .eq("id", reviewId)
+            .select()
 
         if (updateError) {
             console.error("Failed to update review lifecycle:", updateError)
             return { success: false, message: "Failed to update review: " + updateError.message }
+        }
+
+        if (!updateData || updateData.length === 0) {
+            console.error(`Update silently failed for review ID ${reviewId}. Possible RLS block.`)
+            return { success: false, message: "Failed to update review: Permission denied." }
         }
 
         revalidatePath(`/projects/${projectId}`)

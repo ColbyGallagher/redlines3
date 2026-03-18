@@ -17,6 +17,9 @@ import { MemberActions } from "@/components/projects/member-actions"
 import { AccessDenied } from "@/components/projects/access-denied"
 import { getProjectSummaryById } from "@/lib/data/projects"
 import { getRoles } from "@/lib/actions/users"
+import { getReferenceDocuments } from "@/lib/actions/reference-documents"
+import { ReferenceDocumentsTable } from "@/components/projects/reference-documents-table"
+import { UploadReferenceDialog } from "@/components/projects/upload-reference-dialog"
 
 type ProjectDashboardPageProps = {
   params: Promise<{
@@ -38,25 +41,31 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
   }
 
   const roles = await getRoles()
+  const referenceDocuments = await getReferenceDocuments(id)
 
-  const { data: { user } } = await (await createServerSupabaseClient()).auth.getUser()
+  const supabase = await createServerSupabaseClient()
+  const { data: { user } } = await supabase.auth.getUser()
   
-  // Calculate if user can edit lifecycle - includes project 'admin', 'developer' OR global 'org admin', 'admin'
-  const projectMember = summary.members.find(m => m.id === user?.id)
-  const projectRole = projectMember?.role?.toLowerCase()
+  // 1. Check direct project role (more reliable than summary.members)
+  const { data: projectMember } = await (supabase.from("project_users") as any)
+    .select("role")
+    .eq("project_id", id)
+    .eq("user_id", user?.id)
+    .maybeSingle()
+
+  const projectRole = (projectMember as any)?.role?.toLowerCase()
   const hasProjectPermission = projectRole === "admin" || projectRole === "developer"
   
-  // Also check global roles if not already permitted by project role
+  // 2. Also check global roles if not already permitted
   let canEditLifecycle = !!hasProjectPermission
   if (!canEditLifecycle && user) {
-    const supabase = await createServerSupabaseClient()
     const { data: orgRoles } = await (supabase.from("user_companies") as any)
         .select(`roles:role_id (name)`)
         .eq("user_id", user.id)
         .eq("active", true)
     
     const globalRoles = (orgRoles || []).map((uc: any) => uc.roles?.name?.toLowerCase()).filter(Boolean)
-    canEditLifecycle = globalRoles.includes('org admin') || globalRoles.includes('admin')
+    canEditLifecycle = globalRoles.includes('org admin') || globalRoles.includes('admin') || globalRoles.includes('developer')
   }
 
   const isAdmin = canEditLifecycle
@@ -85,6 +94,21 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
         <section className="flex flex-col gap-6">
           <ProjectReviewsList summary={summary} isAdmin={isAdmin} />
           <IssuesTable issues={summary.issues} summary={summary} />
+        </section>
+
+        <section className="grid gap-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0">
+              <div className="space-y-1">
+                <CardTitle>Project reference documents</CardTitle>
+                <CardDescription>Global project specifications, contracts, and standards</CardDescription>
+              </div>
+              {isAdmin && <UploadReferenceDialog projectId={id} />}
+            </CardHeader>
+            <CardContent>
+              <ReferenceDocumentsTable documents={referenceDocuments} projectId={id} />
+            </CardContent>
+          </Card>
         </section>
 
         <section className="grid gap-4">

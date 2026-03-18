@@ -39,6 +39,63 @@ function normalizeOptionalString(value: unknown) {
 
 export const runtime = "nodejs"
 
+export async function GET(request: Request) {
+    const { searchParams } = new URL(request.url)
+    const documentId = searchParams.get("documentId")
+
+    if (!documentId) {
+        return NextResponse.json({ error: "documentId is required" }, { status: 400 })
+    }
+
+    const supabase = await createServerSupabaseClient()
+    const { data, error } = await (supabase
+        .from("issues")
+        .select(`
+            id, 
+            issue_number, 
+            discipline, 
+            discipline_old,
+            importance, 
+            importance_old,
+            status, 
+            status_old,
+            comment,
+            date_created, 
+            date_modified, 
+            project_disciplines!discipline(name),
+            project_importances!importance(name),
+            project_statuses!status(name),
+            created_by_user:users!created_by_user_id(first_name,last_name)
+        `)
+        .eq("document_id", documentId) as any)
+
+    if (error) {
+        console.error("Failed to load issues for document", error)
+        return NextResponse.json({ error: "Failed to load issues" }, { status: 500 })
+    }
+
+    const issues = (data || []).map((item: any) => {
+        const createdByUser = item.created_by_user
+        const createdBy = createdByUser
+            ? `${createdByUser.first_name ?? ""} ${createdByUser.last_name ?? ""}`.trim() || null
+            : null
+
+        return {
+            id: item.id,
+            issueNumber: item.issue_number ?? null,
+            discipline: item.project_disciplines?.name ?? item.discipline_old ?? item.discipline ?? null,
+            importance: item.project_importances?.name ?? item.importance_old ?? item.importance ?? null,
+            status: item.project_statuses?.name ?? item.status_old ?? item.status ?? null,
+            comment: item.comment ?? null,
+            dateCreated: item.date_created ?? null,
+            dateModified: item.date_modified ?? null,
+            createdBy,
+        }
+    })
+
+    return NextResponse.json({ issues })
+}
+
 export async function POST(request: Request) {
     let payload: CreateIssueRequestBody
 

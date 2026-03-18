@@ -2,7 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { createPortal } from "react-dom"
-import { Loader2, AlertCircle, PanelLeft } from "lucide-react"
+import { Loader2, AlertCircle, PanelLeft, ListChecks, Filter, Search, User, ChevronDown, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
 import { SyncfusionPdfViewer, SyncfusionPdfViewerHandle } from "@/components/pdf/syncfusion-pdf-viewer"
@@ -29,6 +29,14 @@ import {
 } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion"
+import { Badge } from "@/components/ui/badge"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 
 
 type PDFMarkupViewerProps = {
@@ -58,11 +66,13 @@ type ProjectSettings = {
 }
 
 type IssueDetails = {
+  id: string
   issueNumber: string | null
   discipline: string | null
   importance: string | null
   status: string | null
   createdBy: string | null
+  comment: string | null
   dateCreated: string | null
   dateModified: string | null
 }
@@ -95,6 +105,14 @@ export function PDFMarkupViewer({ reviewId, document, childDocuments = [], initi
   const [currentPage, setCurrentPage] = useState(1)
   const [zoomLevel, setZoomLevel] = useState(1)
   const viewerRef = useRef<SyncfusionPdfViewerHandle>(null)
+
+  // Sidebar & Filtering State
+  const [sidebarTab, setSidebarTab] = useState<"issues" | "thumbnails">("issues")
+  const [documentIssues, setDocumentIssues] = useState<IssueDetails[]>([])
+  const [issuesLoading, setIssuesLoading] = useState(false)
+  const [filterAuthor, setFilterAuthor] = useState("all")
+  const [filterDiscipline, setFilterDiscipline] = useState("all")
+  const [filterStatus, setFilterStatus] = useState("all")
 
   const availableImportances = useMemo(() =>
     projectSettings?.importances?.length
@@ -205,6 +223,70 @@ export function PDFMarkupViewer({ reviewId, document, childDocuments = [], initi
     loadUser()
   }, [])
 
+  // Bulk Load Issues for Document
+  useEffect(() => {
+    let isActive = true
+    setIssuesLoading(true)
+
+    async function loadDocumentIssues() {
+      try {
+        const response = await fetch(`/api/issues?documentId=${document.id}`)
+        if (!response.ok) throw new Error("Failed to load issues")
+        const payload = await response.json()
+        if (isActive) {
+          setDocumentIssues(payload.issues || [])
+        }
+      } catch (error) {
+        console.error("Failed to load document issues", error)
+      } finally {
+        if (isActive) setIssuesLoading(false)
+      }
+    }
+
+    loadDocumentIssues()
+
+    return () => {
+      isActive = false
+    }
+  }, [document.id])
+
+  // Filtering Logic
+  const filteredAnnotations = useMemo(() => {
+    return annotations
+      .map((ann) => {
+        const issue = documentIssues.find((i) => i.id === ann.issueId)
+        return {
+          ...ann,
+          issue,
+        }
+      })
+      .filter((ann) => {
+        if (filterAuthor !== "all" && ann.createdBy !== filterAuthor) return false
+        if (filterDiscipline !== "all") {
+          const discipline = ann.issue?.discipline || "Unassigned"
+          if (discipline !== filterDiscipline) return false
+        }
+        if (filterStatus !== "all") {
+          const status = ann.issue?.status || "Draft"
+          if (status !== filterStatus) return false
+        }
+        return true
+      })
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+  }, [annotations, documentIssues, filterAuthor, filterDiscipline, filterStatus])
+
+  const filterOptions = useMemo(() => {
+    const authors = Array.from(new Set(annotations.map((a) => a.createdBy)))
+    const disciplines = Array.from(new Set(documentIssues.map((i) => i.discipline).filter(Boolean)))
+    const statuses = Array.from(new Set(documentIssues.map((i) => i.status).filter(Boolean)))
+
+    return {
+      authors,
+      disciplines: Array.from(new Set(["Unassigned", ...disciplines])),
+      statuses: Array.from(new Set(["Draft", ...statuses])),
+    }
+  }, [annotations, documentIssues])
+
   // Syncfusion handles zoom natively, but we track it to scale our custom overlays
   useEffect(() => {
     // Current zoom-to-pointer logic is handled by Syncfusion
@@ -307,6 +389,14 @@ export function PDFMarkupViewer({ reviewId, document, childDocuments = [], initi
       isActive = false
     }
   }, [selectedAnnotation?.issueId])
+
+  // Function to jump to annotation
+  const jumpToAnnotation = useCallback((annotation: RealtimeAnnotation) => {
+    if (viewerRef.current) {
+      viewerRef.current.goToPage(annotation.page)
+      setSelectedAnnotationId(annotation.id)
+    }
+  }, [])
 
   const resetConvertForm = useCallback(() => {
     setDiscipline("")
@@ -554,116 +644,196 @@ export function PDFMarkupViewer({ reviewId, document, childDocuments = [], initi
 
       {/* 2. Main Content Area */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar */}
-        <aside className="flex w-72 flex-col border-r bg-card">
-          <div className="border-b px-4 py-3">
+          {/* Sidebar */}
+        <aside className="flex w-80 flex-col border-r bg-card shadow-sm">
+          <div className="flex items-center justify-between border-b px-4 py-3 bg-muted/20">
             <div className="flex items-center gap-2">
-              <PanelLeft className="h-4 w-4 text-primary" />
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-foreground">Properties</h3>
+              <ListChecks className="h-4 w-4 text-primary" />
+              <h3 className="text-xs font-bold uppercase tracking-widest text-foreground">Issues</h3>
+            </div>
+            <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+              {filteredAnnotations.length}
+            </Badge>
+          </div>
+
+          {/* Filters */}
+          <div className="border-b bg-muted/5 p-3 space-y-3">
+            <div className="grid grid-cols-1 gap-2">
+              <div className="space-y-1">
+                <Label className="text-[10px] uppercase text-muted-foreground font-semibold px-1">Author</Label>
+                <Select value={filterAuthor} onValueChange={setFilterAuthor}>
+                  <SelectTrigger className="h-8 text-xs bg-background">
+                    <SelectValue placeholder="All Authors" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Authors</SelectItem>
+                    {filterOptions.authors.map((auth) => (
+                      <SelectItem key={auth} value={auth}>{auth}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <Label className="text-[10px] uppercase text-muted-foreground font-semibold px-1">Discipline</Label>
+                  <Select value={filterDiscipline} onValueChange={setFilterDiscipline}>
+                    <SelectTrigger className="h-8 text-xs bg-background">
+                      <SelectValue placeholder="All" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All</SelectItem>
+                      {filterOptions.disciplines.map((d) => (
+                        <SelectItem key={d as string} value={d as string}>{d as string}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[10px] uppercase text-muted-foreground font-semibold px-1">Status</Label>
+                  <Select value={filterStatus} onValueChange={setFilterStatus}>
+                    <SelectTrigger className="h-8 text-xs bg-background">
+                      <SelectValue placeholder="All" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All</SelectItem>
+                      {filterOptions.statuses.map((s) => (
+                        <SelectItem key={s as string} value={s as string}>{s as string}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
             </div>
           </div>
-          <div className="flex-1 overflow-auto p-4">
-            {selectedAnnotation ? (
-              <div className="space-y-4">
-                <div className="space-y-1">
-                  <p className="text-xs font-semibold text-muted-foreground">Content</p>
-                  <p className="text-sm font-medium break-words">{selectedAnnotation.content}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs font-semibold text-muted-foreground">Author</p>
-                  <p className="text-sm">{selectedAnnotation.createdBy}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs font-semibold text-muted-foreground">Created</p>
-                  <p className="text-sm">{new Date(selectedAnnotation.createdAt).toLocaleString()}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs font-semibold text-muted-foreground">Color</p>
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="inline-flex h-5 w-5 rounded-full border"
-                      style={{ backgroundColor: selectedAnnotation.color }}
-                    />
-                    <span className="text-xs text-muted-foreground">{selectedAnnotation.color}</span>
-                  </div>
-                </div>
-                {selectedAnnotation.issueId && (
-                  <div className="space-y-2 rounded-md border border-border bg-muted/50 p-3 text-xs">
-                    {issueLoading ? (
-                      <p className="text-muted-foreground">Loading issue details…</p>
-                    ) : issueError ? (
-                      <p className="text-destructive">{issueError}</p>
-                    ) : issueDetails ? (
-                      <div className="space-y-3">
-                        <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Linked issue</p>
-                        <dl className="space-y-2 text-[11px]">
-                          <div className="flex items-center justify-between">
-                            <dt className="text-muted-foreground">Issue #</dt>
-                            <dd className="font-medium">{issueDetails.issueNumber ?? "Unknown"}</dd>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <dt className="text-muted-foreground">Discipline</dt>
-                            <dd className="font-medium">{issueDetails.discipline ?? "Unknown"}</dd>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <dt className="text-muted-foreground">Importance</dt>
-                            <dd className="font-medium">{issueDetails.importance ?? "Unknown"}</dd>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <dt className="text-muted-foreground">Created by</dt>
-                            <dd className="font-medium">{issueDetails.createdBy ?? "Unknown"}</dd>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <dt className="text-muted-foreground">Date created</dt>
-                            <dd className="font-medium">{formatIssueTimestamp(issueDetails.dateCreated)}</dd>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <dt className="text-muted-foreground">Last modified</dt>
-                            <dd className="font-medium">{formatIssueTimestamp(issueDetails.dateModified)}</dd>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <dt className="text-muted-foreground">Status</dt>
-                            <dd className="font-medium">{issueDetails.status ?? "Unknown"}</dd>
-                          </div>
-                        </dl>
-                      </div>
-                    ) : (
-                      <p className="text-muted-foreground">Issue data not available.</p>
-                    )}
-                  </div>
-                )}
-                <div className="space-y-2">
-                  <Button
-                    variant="secondary"
-                    className="w-full"
-                    onClick={handleOpenConvertDialog}
-                    disabled={Boolean(selectedAnnotation.issueId)}
-                  >
-                    {selectedAnnotation.issueId ? "Annotation already linked" : "Convert to issue"}
-                  </Button>
-                  {selectedAnnotation.issueId && (
-                    <p className="text-xs text-muted-foreground">This annotation is already linked to an issue.</p>
-                  )}
-                  {settingsError && (
-                    <p className="text-xs text-destructive">{settingsError}</p>
-                  )}
-                </div>
-                <Button
-                  variant="outline"
-                  className="w-full text-destructive hover:bg-destructive hover:text-destructive-foreground"
-                  onClick={() => handleDeleteAnnotation(selectedAnnotation.id)}
-                >
-                  Delete Markup
-                </Button>
+
+          <div className="flex-1 overflow-auto p-0">
+            {issuesLoading ? (
+              <div className="flex h-32 flex-col items-center justify-center space-y-2 text-muted-foreground">
+                <Loader2 className="h-5 w-5 animate-spin" />
+                <p className="text-xs">Loading issues...</p>
               </div>
+            ) : filteredAnnotations.length > 0 ? (
+              <Accordion type="single" collapsible className="w-full" value={selectedAnnotationId || undefined} onValueChange={(val: string) => val && setSelectedAnnotationId(val)}>
+                {filteredAnnotations.map((ann) => (
+                  <AccordionItem key={ann.id} value={ann.id} className="border-b px-0 transition-colors hover:bg-muted/30 data-[state=open]:bg-muted/50">
+                    <div className="flex items-start px-3 py-2 group">
+                      <div className="mt-1 mr-3 flex-shrink-0">
+                        <Avatar className="h-7 w-7 border-2 border-background shadow-sm ring-1 ring-muted">
+                          <AvatarFallback className="text-[10px] font-bold bg-primary/10 text-primary uppercase">
+                            {ann.createdBy.split(' ').map(n => n[0]).join('')}
+                          </AvatarFallback>
+                        </Avatar>
+                      </div>
+                      <div className="flex-1 min-w-0" onClick={() => jumpToAnnotation(ann)}>
+                        <div className="flex items-center justify-between mb-0.5">
+                          <span className="text-[11px] font-bold text-foreground truncate max-w-[120px]">
+                            {ann.createdBy}
+                          </span>
+                          <div className="flex items-center gap-1">
+                            {ann.issue && (
+                              <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 font-mono font-medium border-primary/20 bg-primary/5 text-primary">
+                                {ann.issue.issueNumber}
+                              </Badge>
+                            )}
+                            <Badge className={cn(
+                              "text-[9px] px-1 py-0 h-4 font-semibold uppercase tracking-tight",
+                              ann.issue?.status === "Open" ? "bg-amber-500/10 text-amber-600 border-amber-500/20" :
+                                ann.issue?.status === "Resolved" ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20" :
+                                  "bg-muted text-muted-foreground"
+                            )} variant="outline">
+                              {ann.issue?.status || "Draft"}
+                            </Badge>
+                          </div>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground line-clamp-1 italic">
+                          "{ann.content.length > 40 ? ann.content.substring(0, 40) + "..." : ann.content}"
+                        </p>
+                      </div>
+                      <AccordionTrigger className="p-1 hover:no-underline opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </div>
+                    <AccordionContent className="px-4 pb-4 pt-1 border-t border-muted/30 bg-background/40">
+                      <div className="space-y-4 text-xs mt-2">
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <Label className="text-[10px] uppercase text-muted-foreground font-bold tracking-wider">Markup Detail</Label>
+                            <span className="text-[10px] text-muted-foreground font-medium">Page {ann.page}</span>
+                          </div>
+                          <div className="p-2.5 rounded-md bg-muted/20 border border-muted/30 text-[11px] leading-relaxed text-foreground/90 font-medium">
+                            {ann.content}
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+                          <div className="space-y-1">
+                            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Discipline</p>
+                            <p className="font-semibold text-foreground flex items-center gap-1.5">
+                              <span className="size-1.5 rounded-full bg-primary/40" />
+                              {ann.issue?.discipline || "Unassigned"}
+                            </p>
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Importance</p>
+                            <p className="font-semibold text-foreground">
+                              {ann.issue?.importance || "None"}
+                            </p>
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Status</p>
+                            <p className="font-semibold text-foreground">
+                              {ann.issue?.status || "Draft"}
+                            </p>
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Created</p>
+                            <p className="font-medium text-muted-foreground/80">
+                              {new Date(ann.createdAt).toLocaleDateString()}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="pt-3 flex items-center gap-2 border-t border-muted/20">
+                          {!ann.issueId ? (
+                            <Button size="sm" variant="outline" className="flex-1 h-7 text-[10px] font-bold uppercase tracking-tight bg-primary/5 hover:bg-primary/10 border-primary/20 text-primary" onClick={handleOpenConvertDialog}>
+                              Convert to Issue
+                            </Button>
+                          ) : (
+                            <Button size="sm" variant="ghost" className="flex-1 h-7 text-[10px] font-bold uppercase tracking-tight" disabled>
+                              Linked to {ann.issue?.issueNumber}
+                            </Button>
+                          )}
+                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10" onClick={() => handleDeleteAnnotation(ann.id)}>
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    </AccordionContent>
+                  </AccordionItem>
+                ))}
+              </Accordion>
             ) : (
-              <div className="flex h-full flex-col items-center justify-center text-center text-sm text-muted-foreground">
-                <p>No markup selected</p>
-                <p className="text-xs">Select a markup to view details.</p>
+              <div className="flex h-64 flex-col items-center justify-center text-center p-6 space-y-3">
+                <div className="size-10 rounded-full bg-muted flex items-center justify-center">
+                  <Filter className="h-5 w-5 text-muted-foreground/50" />
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm font-bold text-foreground">No issues found</p>
+                  <p className="text-[11px] text-muted-foreground leading-relaxed">
+                    Try adjusting your filters or search to find what you're looking for.
+                  </p>
+                </div>
+                <Button variant="outline" size="sm" className="h-7 text-[10px] font-bold uppercase" onClick={() => {
+                  setFilterAuthor("all")
+                  setFilterDiscipline("all")
+                  setFilterStatus("all")
+                }}>
+                  Clear Filters
+                </Button>
               </div>
             )}
           </div>
         </aside>
+
 
         {/* PDF Container */}
         <div className="relative flex-1 bg-muted/10 overflow-hidden">
