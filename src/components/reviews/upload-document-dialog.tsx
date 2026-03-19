@@ -178,6 +178,8 @@ export function UploadDocumentDialog({ reviewId, projectId, bucket = "documents"
         const activeSetup = setups.find(s => s.id === setupId)
         if (!activeSetup) return
 
+        if (file.name.toLowerCase().endsWith('.ifc')) return
+
         setFileEntries(current => current.map((entry, idx) => 
             idx === index ? { ...entry, isExtracting: true } : entry
         ))
@@ -216,6 +218,8 @@ export function UploadDocumentDialog({ reviewId, projectId, bucket = "documents"
 
         const activeSetup = setups.find(s => s.id === setupId)
         if (!activeSetup) return
+
+        if (file.name.toLowerCase().endsWith('.ifc')) return
 
         try {
             const fileUrl = URL.createObjectURL(file)
@@ -443,6 +447,7 @@ export function UploadDocumentDialog({ reviewId, projectId, bucket = "documents"
                                     ref={fileInputRef}
                                     id="document" 
                                     type="file" 
+                                    accept=".pdf,application/pdf,.ifc,application/x-step"
                                     multiple 
                                     onChange={handleFileChange} 
                                     className="hidden"

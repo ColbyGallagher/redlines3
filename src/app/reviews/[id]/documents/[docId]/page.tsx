@@ -3,6 +3,7 @@ import { notFound } from "next/navigation"
 
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb"
 import { PDFMarkupViewerClient } from "@/components/reviews/pdf-markup-client-wrapper"
+import { IFCModelViewerClient } from "@/components/reviews/ifc-model-client-wrapper"
 import { getAnnotationsForDocument, getChildDocuments, getDocumentForReview, getReviewDetailById } from "@/lib/data/reviews"
 
 type ReviewDocumentPageProps = {
@@ -53,19 +54,31 @@ export default async function ReviewDocumentPage({ params, searchParams }: Revie
         </BreadcrumbList>
       </Breadcrumb>
       <section className="flex flex-1 overflow-hidden rounded-lg border bg-background shadow-sm">
-        <PDFMarkupViewerClient
-          reviewId={review.id}
-          document={{
-            id: document.id,
-            name: document.documentName ?? "Untitled document",
-            code: document.documentCode ?? "",
-            pdfUrl: document.pdfUrl ?? "",
-            projectId: review.project.id,
-          }}
-          childDocuments={childDocuments}
-          initialAnnotations={initialAnnotations}
-          initialPage={initialPage}
-        />
+        {document.documentName?.toLowerCase().endsWith('.ifc') || document.pdfUrl?.toLowerCase().endsWith('.ifc') ? (
+          <IFCModelViewerClient
+            document={{
+              id: document.id,
+              name: document.documentName ?? "Untitled document",
+              code: document.documentCode ?? "",
+              pdfUrl: document.pdfUrl ?? "",
+              projectId: review.project.id,
+            }}
+          />
+        ) : (
+          <PDFMarkupViewerClient
+            reviewId={review.id}
+            document={{
+              id: document.id,
+              name: document.documentName ?? "Untitled document",
+              code: document.documentCode ?? "",
+              pdfUrl: document.pdfUrl ?? "",
+              projectId: review.project.id,
+            }}
+            childDocuments={childDocuments}
+            initialAnnotations={initialAnnotations}
+            initialPage={initialPage}
+          />
+        )}
       </section>
     </div>
   )

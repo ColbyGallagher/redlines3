@@ -516,6 +516,7 @@ export function ReviewDetailsView({ review, isAdmin, availableMilestones = [] }:
               ) : (
                 <Link
                   href={`/reviews/${review.id}/documents/${document.id}${isChild && document.pageNumber ? `?page=${document.pageNumber}` : ""}`}
+                  prefetch={false}
                   className={cn("text-primary hover:underline font-medium text-left", isChild && "text-xs")}
                 >
                   {document.documentName}
