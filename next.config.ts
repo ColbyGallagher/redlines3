@@ -14,7 +14,13 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
-  transpilePackages: ['@ifc-lite/viewer', '@ifc-lite/sdk', '@ifc-lite/core'],
+  transpilePackages: [
+    '@ifc-lite/viewer', 
+    '@ifc-lite/sdk', 
+    '@ifc-lite/core',
+    '@thatopen/components',
+    '@thatopen/fragments'
+  ],
   webpack: (config) => {
     // Treat .wasm files as assets, not modules
     config.module.rules.push({
