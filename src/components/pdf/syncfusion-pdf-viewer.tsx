@@ -258,6 +258,23 @@ const SyncfusionPdfViewer = forwardRef<SyncfusionPdfViewerHandle, SyncfusionPdfV
       }
     }, [activeTool, isMounted])
 
+    // Handle window resize to ensure the viewer container updates correctly
+    useEffect(() => {
+      const handleResize = () => {
+        if (viewerRef.current) {
+          viewerRef.current.updateViewerContainer()
+        }
+      }
+
+      window.addEventListener("resize", handleResize)
+      // Call once initially to ensure correct size
+      handleResize()
+
+      return () => {
+        window.removeEventListener("resize", handleResize)
+      }
+    }, [isMounted])
+
     // Load a new document when the path changes
     useEffect(() => {
       if (viewerRef.current && documentPath) {
@@ -268,14 +285,16 @@ const SyncfusionPdfViewer = forwardRef<SyncfusionPdfViewerHandle, SyncfusionPdfV
     if (!isMounted) return <div style={{ height }} />
 
     return (
-      <div ref={containerRef} style={{ height }} className="syncfusion-viewer-container">
+      <div ref={containerRef} style={{ height, width: "100%" }} className="syncfusion-viewer-container">
         <PdfViewerComponent
           ref={viewerRef}
           id="syncfusion-pdf-viewer"
         documentPath={documentPath}
         // Point to local WASM resources with absolute URL
         resourceUrl={absoluteResourceUrl}
-        style={{ height }}
+        width="100%"
+        height="100%"
+        style={{ height: "100%", width: "100%" }}
         enableToolbar={showToolbar}
         enableNavigationToolbar={showToolbar}
         enableDownload={false}

@@ -836,7 +836,7 @@ export function PDFMarkupViewer({ reviewId, document, childDocuments = [], initi
 
 
         {/* PDF Container */}
-        <div className="relative flex-1 bg-muted/10 overflow-hidden">
+        <div className="relative flex-1 bg-muted/10 overflow-hidden min-w-0">
           <SyncfusionPdfViewer
             ref={viewerRef}
             documentPath={document.pdfUrl}
