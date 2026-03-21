@@ -100,7 +100,7 @@ const SyncfusionPdfViewer = forwardRef<SyncfusionPdfViewerHandle, SyncfusionPdfV
 
     const absoluteResourceUrl = useMemo(() => {
       if (typeof window === "undefined") return "/ej2-pdfviewer-lib"
-      return new URL("/ej2-pdfviewer-lib", window.location.origin).toString() + "/"
+      return new URL("/ej2-pdfviewer-lib", window.location.origin).toString()
     }, [])
 
     const [currentZoom, setCurrentZoom] = useState(100)
