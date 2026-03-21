@@ -208,7 +208,9 @@ export function IssueFieldsSettings({
                     {renderTabContent(milestones, "Milestones", "project_milestones")}
                     {renderTabContent(disciplines, "Disciplines", "project_disciplines")}
                     {renderTabContent(importances, "Importances", "project_importances")}
+                    
                     {renderTabContent(states, "States", "project_states")}
+
                     {renderTabContent(statuses, "Statuses", "project_statuses")}
                     {renderTabContent(packages, "Packages", "project_packages")}
                     {renderTabContent(classifications, "Classifications", "project_classifications")}

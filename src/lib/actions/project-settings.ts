@@ -140,3 +140,47 @@ export async function deleteLookupItem(projectId: string, table: LookupTable, id
         return { success: false, error: error instanceof Error ? error.message : "Failed to delete item" }
     }
 }
+
+export async function updateStateOrder(projectId: string, orderedStateIds: string[]) {
+    try {
+        const { supabase } = await checkAdminPrivileges(projectId)
+
+        // Update each state's order_index
+        // Using a loop here as Supabase doesn't have a bulk update for multiple different values easily without a stored procedure
+        for (let i = 0; i < orderedStateIds.length; i++) {
+            const { error } = await (supabase as any)
+                .from("project_states")
+                .update({ order_index: i })
+                .eq("id", orderedStateIds[i])
+                .eq("project_id", projectId)
+            
+            if (error) throw error
+        }
+
+        revalidatePath(`/projects/${projectId}/settings`)
+        return { success: true }
+    } catch (error) {
+        console.error("Error updating state order:", error)
+        return { success: false, error: error instanceof Error ? error.message : "Failed to update state order" }
+    }
+}
+
+export async function updateStatePermissions(projectId: string, stateId: string, allowedRoles: string[]) {
+    try {
+        const { supabase } = await checkAdminPrivileges(projectId)
+
+        const { error } = await (supabase as any)
+            .from("project_states")
+            .update({ allowed_roles: allowedRoles })
+            .eq("id", stateId)
+            .eq("project_id", projectId)
+
+        if (error) throw error
+
+        revalidatePath(`/projects/${projectId}/settings`)
+        return { success: true }
+    } catch (error) {
+        console.error("Error updating state permissions:", error)
+        return { success: false, error: error instanceof Error ? error.message : "Failed to update state permissions" }
+    }
+}

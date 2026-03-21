@@ -95,3 +95,128 @@ export async function createIssueFromAnnotations(data: CreateIssueFromAnnotation
         return { message: "An unexpected error occurred" }
     }
 }
+
+import type { Issue } from "@/lib/db/types"
+
+export async function updateIssue(issueId: string, projectId: string, updates: Partial<Issue>) {
+    const supabase = await createServerSupabaseClient()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) {
+        throw new Error("Unauthorized")
+    }
+
+    try {
+        // 1. Get the current issue state and the user's role in the project
+        const { data: issue, error: issueError } = await (supabase.from("issues" as any) as any)
+            .select("state, review_id, created_by_user_id")
+            .eq("id", issueId)
+            .single()
+
+        if (issueError || !issue) {
+            throw new Error("Issue not found")
+        }
+
+        const { data: projectMember, error: memberError } = await (supabase.from("project_users" as any) as any)
+            .select("role")
+            .eq("project_id", projectId)
+            .eq("user_id", user.id)
+            .maybeSingle()
+
+        if (memberError) throw memberError
+
+        // 2. Check permissions for the current review phase
+        // Get the review's current phase link
+        const { data: review, error: reviewError } = await (supabase.from("reviews" as any) as any)
+            .select("phase_id, specific_status")
+            .eq("id", (issue as any).review_id || "")
+            .single()
+
+        if (!reviewError && review) {
+            let phaseData = null
+            let phaseError = null
+
+            // Prioritize direct phase_id link
+            if ((review as any).phase_id) {
+                const res = await (supabase.from("project_review_phases" as any) as any)
+                    .select("permissions")
+                    .eq("id", (review as any).phase_id)
+                    .maybeSingle()
+                phaseData = res.data
+                phaseError = res.error
+            } 
+            // Fallback to name-based lookup if phase_id is not set (legacy or during migration)
+            else if ((review as any).specific_status) {
+                const res = await (supabase.from("project_review_phases" as any) as any)
+                    .select("permissions")
+                    .eq("project_id", projectId)
+                    .eq("phase_name", (review as any).specific_status)
+                    .maybeSingle()
+                phaseData = res.data
+                phaseError = res.error
+            }
+
+            if (!phaseError && phaseData) {
+                const userRole = (projectMember as any)?.role?.toLowerCase() || "viewer"
+                const phasePerms = (phaseData as any).permissions || {}
+                const rolePerms = phasePerms[userRole] || phasePerms[userRole.replace(" ", "_")] || []
+                
+                const adminRoles = ["admin", "project admin", "organization admin", "org admin", "developer"]
+                const isSystemAdmin = adminRoles.includes(userRole)
+
+                if (!isSystemAdmin) {
+                    const canEditOthers = rolePerms.includes("edit_others")
+                    const canEditOwn = rolePerms.includes("edit_own")
+
+                    if (!canEditOthers) {
+                        if (canEditOwn) {
+                            if ((issue as any).created_by_user_id !== user.id) {
+                                throw new Error(`Unauthorized: You can only edit your own issues during the ${ (review as any).specific_status } phase.`)
+                            }
+                        } else {
+                            throw new Error(`Unauthorized: Your role cannot edit issues during the ${ (review as any).specific_status } phase.`)
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3. Fallback: check permissions for the issue status if no phase matches
+        if (issue.state) {
+            const { data: stateData, error: stateError } = await (supabase.from("project_states" as any) as any)
+                .select("allowed_roles")
+                .eq("id", issue.state)
+                .single()
+
+            if (!stateError && stateData) {
+                const userRole = (projectMember as any)?.role?.toLowerCase() || "viewer"
+                const allowedRoles = (stateData as any).allowed_roles || ["admin"]
+                
+                const adminRoles = ["admin", "project admin", "organization admin", "org admin", "developer"]
+                const isSystemAdmin = adminRoles.includes(userRole)
+
+                if (!isSystemAdmin && !allowedRoles.map((r: string) => r.toLowerCase()).includes(userRole)) {
+                    throw new Error("Unauthorized: Your role cannot edit issues in this state.")
+                }
+            }
+        }
+
+        // 3. Perform the update
+        const { error: updateError } = await (supabase.from("issues" as any) as any)
+            .update({
+                ...updates,
+                date_modified: new Date().toISOString(),
+                modified_by_user_id: user.id
+            })
+            .eq("id", issueId)
+
+        if (updateError) throw updateError
+
+        revalidateTag("issues")
+        revalidatePath(`/projects/${projectId}`)
+        return { success: true }
+    } catch (error) {
+        console.error("Error updating issue:", error)
+        return { success: false, error: error instanceof Error ? error.message : "Failed to update issue" }
+    }
+}

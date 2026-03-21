@@ -1,7 +1,7 @@
 import "server-only"
 
 import { createServerSupabaseClient } from "@/lib/supabase/server"
-import type { Database, ProjectMilestone, ProjectStatus, ProjectImportance, ProjectDiscipline, ProjectState, ProjectSuitability, ProjectReviewStage, ProjectResponseRole, ProjectPackage, ProjectClassification } from "@/lib/db/types"
+import type { Database, ProjectMilestone, ProjectStatus, ProjectImportance, ProjectDiscipline, ProjectState, ProjectSuitability, ProjectReviewStage, ProjectResponseRole, ProjectPackage, ProjectClassification, ProjectReviewPhase } from "@/lib/db/types"
 import type { ReviewUser } from "./reviews"
 import { formatName, toTitleCaseFallback } from "@/lib/utils/user-utils"
 
@@ -39,6 +39,7 @@ type ProjectWithRelations = ProjectRow & {
   project_review_stages: ProjectReviewStage[] | null
   project_response_roles: ProjectResponseRole[] | null
   project_users: ProjectUserRow[] | null
+  project_review_phases: ProjectReviewPhase[] | null
 }
 
 type NormalizedReview = {
@@ -52,6 +53,7 @@ type NormalizedReview = {
   dueDateReplies?: string
   state?: string | null
   specificStatus?: string | null
+  phaseId?: string | null
   project: {
     id: string
     projectNumber: string
@@ -104,6 +106,7 @@ export type ProjectReviewSummary = {
   dueDateType?: "client" | "consultant" | "reply"
   state?: string | null
   specificStatus?: string | null
+  phaseId?: string | null
   daysUntilDue?: number
   isOverdue: boolean
   isUpcoming: boolean
@@ -113,6 +116,10 @@ export type ProjectReviewSummary = {
     total: number
     complete: number
     notStarted: number
+  }
+  leadReviewer?: {
+    name: string
+    avatar_url?: string | null
   }
 }
 
@@ -220,6 +227,7 @@ function mapReview(row: ReviewRow & {
     dueDateReplies: row.due_date_replies ?? undefined,
     state: row.state ?? null,
     specificStatus: row.specific_status ?? null,
+    phaseId: row.phase_id,
     project: {
       id: project.id,
       projectNumber: project.project_number,
@@ -347,6 +355,7 @@ function calculateReviewSummaries(today: Date, reviews: NormalizedReview[], proj
       status: (projectStatuses ?? []).find(s => s.id === review.status)?.name ?? review.status,
       state: review.state,
       specificStatus: review.specificStatus,
+      phaseId: review.phaseId,
       dueDate: dueDateIso,
       dueDateType: primaryDueDate?.type,
       daysUntilDue,
@@ -485,7 +494,15 @@ function deriveSettings(project: ProjectWithRelations): ProjectSettings {
     statuses: project.project_statuses ?? [],
     importances: project.project_importances ?? [],
     disciplines: project.project_disciplines ?? [],
-    states: project.project_states ?? [],
+    states: (project.project_review_phases ?? []).map(p => ({
+      id: p.id,
+      project_id: p.project_id,
+      name: p.phase_name,
+      phase_name: p.phase_name,
+      order_index: p.order_index,
+      allowed_roles: p.allowed_roles,
+      permissions: p.permissions
+    })) as any[],
     suitabilities: project.project_suitabilities ?? [],
     packages: (project as any).project_packages ?? [],
     classifications: (project as any).project_classifications ?? [],
@@ -594,7 +611,7 @@ export async function getProjectSummaries(): Promise<ProjectSummary[]> {
     const supabase = await createServerSupabaseClient()
     const { data, error } = await supabase
       .from("projects")
-      .select("*, reviews(*, documents(*), issues(*)), project_milestones(*), project_statuses(*), project_importances(*), project_disciplines(*), project_states(*), project_suitabilities(*), project_review_stages(*), project_response_roles(*), project_users(*, user:users(*), roles:roles(*)), project_packages(*), project_classifications(*)")
+      .select("*, reviews(*, documents(*), issues(*)), project_milestones(*), project_statuses(*), project_importances(*), project_disciplines(*), project_states(*), project_suitabilities(*), project_review_stages(*), project_response_roles(*), project_users(*, user:users(*), roles:roles(*)), project_packages(*), project_classifications(*), project_review_phases(*)")
       .order("project_name")
 
     if (error) {
@@ -615,7 +632,7 @@ export async function getProjectSummaryById(projectId: string): Promise<ProjectS
     const supabase = await createServerSupabaseClient()
     const { data, error } = await supabase
       .from("projects")
-      .select("*, reviews(*, documents(*), issues(*), review_users(*, user:users(*))), project_milestones(*), project_statuses(*), project_importances(*), project_disciplines(*), project_states(*), project_suitabilities(*), project_review_stages(*), project_response_roles(*), project_users(*, user:users(*), roles:roles(*)), project_packages(*), project_classifications(*)")
+      .select("*, reviews(*, documents(*), issues(*), review_users(*, user:users(*))), project_milestones(*), project_statuses(*), project_importances(*), project_disciplines(*), project_states(*), project_suitabilities(*), project_review_stages(*), project_response_roles(*), project_users(*, user:users(*), roles:roles(*)), project_packages(*), project_classifications(*), project_review_phases(*)")
       .eq("id", projectId)
       .maybeSingle()
 

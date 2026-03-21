@@ -68,6 +68,7 @@ export type ReviewDetail = {
   status: "Draft" | "In Review" | "Awaiting Client" | "Approved" | "Flagged"
   state: string
   specificStatus: string
+  phaseId?: string | null
   dueDateSmeReview: string
   dueDateIssueComments: string
   dueDateReplies: string
@@ -207,6 +208,7 @@ function mapReview(row: ReviewRow & {
     status: (row.status ?? "Draft") as ReviewDetail["status"],
     state: row.state ?? "Active",
     specificStatus: row.specific_status ?? "In Progress",
+    phaseId: row.phase_id,
     dueDateSmeReview: row.due_date_sme_review ?? "",
     dueDateIssueComments: row.due_date_issue_comments ?? "",
     dueDateReplies: row.due_date_replies ?? "",

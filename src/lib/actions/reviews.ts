@@ -73,7 +73,7 @@ export async function getAllUsers(): Promise<ReviewUser[]> {
 export async function updateReviewLifecycle(
     reviewId: string,
     projectId: string,
-    payload: { state?: string; status?: string; specificStatus?: string; milestone?: string; dueDate?: string }
+    payload: { state?: string; status?: string; specificStatus?: string; phaseId?: string; milestone?: string; dueDate?: string }
 ): Promise<{ success: boolean; message: string }> {
     const supabase = await createServerSupabaseClient()
 
@@ -120,6 +120,26 @@ export async function updateReviewLifecycle(
         if (payload.specificStatus !== undefined) updatePayload.specific_status = payload.specificStatus
         if (payload.milestone !== undefined) updatePayload.milestone = payload.milestone
         
+        // Handle phaseId update and sync specific_status
+        if (payload.phaseId !== undefined) {
+            updatePayload.phase_id = payload.phaseId
+            
+            // Fetch the phase name to keep specific_status in sync
+            if (payload.phaseId) {
+                const { data: phase } = await (supabase.from("project_review_phases") as any)
+                    .select("phase_name, state")
+                    .eq("id", payload.phaseId)
+                    .single()
+                
+                if (phase) {
+                    updatePayload.specific_status = (phase as any).phase_name
+                    updatePayload.state = (phase as any).state
+                }
+            } else {
+                updatePayload.specific_status = null
+            }
+        }
+
         // When updating due date from overview, update all relevant columns to ensure visibility
         if (payload.dueDate !== undefined) {
             updatePayload.due_date_sme_review = payload.dueDate

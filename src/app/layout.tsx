@@ -1,5 +1,3 @@
-import { SyncfusionLicense } from "@/components/syncfusion-license"
-
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
@@ -42,7 +40,6 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <AppShell>
-            <SyncfusionLicense />
             <div id="annotation-popovers" className="fixed left-0 top-0 z-[9999]" />
             {children}
             <Toaster />

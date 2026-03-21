@@ -59,6 +59,7 @@ export type Review = {
   project_id: string
   state?: ReviewState | null
   specific_status?: ReviewStatus | null
+  phase_id?: string | null
   status?: string | null
   summary?: string | null
   start_date?: string | null
@@ -72,6 +73,9 @@ export type ProjectReviewPhase = {
   phase_name: string
   duration_days: number
   order_index: number
+  allowed_roles: string[]
+  permissions: Record<string, string[]>
+  state: "Active" | "Complete" | "Archived"
   created_at?: string | null
   updated_at?: string | null
 }
@@ -161,6 +165,8 @@ export type ProjectState = {
   id: string
   project_id: string
   name: string
+  order_index: number
+  allowed_roles: string[]
 }
 
 export type ProjectSuitability = {

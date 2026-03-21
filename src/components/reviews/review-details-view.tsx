@@ -97,7 +97,7 @@ export function ReviewDetailsView({ review, isAdmin, availableMilestones = [] }:
   const [isPending, startTransition] = useTransition()
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [pendingUpdate, setPendingUpdate] = useState<{
-    field: "state" | "status" | "specificStatus" | "milestone" | "dueDate";
+    field: "status" | "specificStatus" | "phaseId" | "milestone" | "dueDate";
     value: string;
   } | null>(null)
   
@@ -198,7 +198,7 @@ export function ReviewDetailsView({ review, isAdmin, availableMilestones = [] }:
     setDragOverColumn(null)
   }
 
-  const handleUpdate = (field: "state" | "status" | "specificStatus" | "milestone" | "dueDate", value: string, skipConfirm = false) => {
+  const handleUpdate = (field: "status" | "specificStatus" | "phaseId" | "milestone" | "dueDate", value: string, skipConfirm = false) => {
     if (skipConfirm) {
       executeLifecycleUpdate(field, value)
     } else {
@@ -207,7 +207,7 @@ export function ReviewDetailsView({ review, isAdmin, availableMilestones = [] }:
     }
   }
 
-  const executeLifecycleUpdate = (field: "state" | "status" | "specificStatus" | "milestone" | "dueDate", value: string) => {
+  const executeLifecycleUpdate = (field: "status" | "specificStatus" | "phaseId" | "milestone" | "dueDate", value: string) => {
     startTransition(async () => {
       const payload: any = { [field]: value }
       // Map generic "dueDate" to plural if we want to sync them? 
@@ -714,35 +714,48 @@ export function ReviewDetailsView({ review, isAdmin, availableMilestones = [] }:
         <div className="flex flex-wrap items-center gap-2">
           {isAdmin && (
             <div className="flex items-center gap-2 mr-2">
-              <Select
-                disabled={isPending}
-                value={review.state || "Active"}
-                onValueChange={(v) => handleUpdate("state", v)}
+              <Badge 
+                variant="outline" 
+                className={cn(
+                  "h-9 px-3 flex items-center justify-center font-medium",
+                  (review.state || "Active") === "Active" && "text-green-600 border-green-600/30 bg-green-50",
+                  (review.state || "Active") === "Complete" && "text-blue-600 border-blue-600/30 bg-blue-50",
+                  (review.state || "Active") === "Archived" && "text-muted-foreground border-muted-foreground/30 bg-muted"
+                )}
               >
-                <SelectTrigger className="h-9 w-[110px]">
-                  <SelectValue placeholder="State" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Active">Active</SelectItem>
-                  <SelectItem value="Complete">Complete</SelectItem>
-                  <SelectItem value="Archived">Archived</SelectItem>
-                </SelectContent>
-              </Select>
+                {review.state || "Active"}
+              </Badge>
               
               <Select
                 disabled={isPending}
-                value={review.specificStatus || "In Progress"}
-                onValueChange={(v) => handleUpdate("specificStatus", v)}
+                value={review.phaseId || review.specificStatus || "In Progress"}
+                onValueChange={(v) => {
+                  if (v.includes("-")) {
+                    handleUpdate("phaseId", v)
+                  } else {
+                    handleUpdate("specificStatus", v)
+                  }
+                }}
               >
-                <SelectTrigger className="h-9 w-[160px]">
+                <SelectTrigger className="h-9 w-[200px]">
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="In Progress">In Progress</SelectItem>
-                  <SelectItem value="Awaiting Design Review">Awaiting Design Review</SelectItem>
-                  <SelectItem value="Awaiting Client Review">Awaiting Client Review</SelectItem>
-                  <SelectItem value="Resolved">Resolved</SelectItem>
-                  <SelectItem value="Closed">Closed</SelectItem>
+                  {timelineProgress?.phases && timelineProgress.phases.length > 0 ? (
+                    timelineProgress.phases.map((phase) => (
+                      <SelectItem key={phase.id} value={phase.id}>
+                        {phase.phase_name}
+                      </SelectItem>
+                    ))
+                  ) : (
+                    <>
+                      <SelectItem value="In Progress">In Progress</SelectItem>
+                      <SelectItem value="Awaiting Design Review">Awaiting Design Review</SelectItem>
+                      <SelectItem value="Awaiting Client Review">Awaiting Client Review</SelectItem>
+                      <SelectItem value="Resolved">Resolved</SelectItem>
+                      <SelectItem value="Closed">Closed</SelectItem>
+                    </>
+                  )}
                 </SelectContent>
               </Select>
             </div>

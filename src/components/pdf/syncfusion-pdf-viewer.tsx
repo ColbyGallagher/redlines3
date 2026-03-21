@@ -1,6 +1,7 @@
 "use client"
 
 import { useRef, useEffect, forwardRef, useImperativeHandle, useState, useMemo } from "react"
+import { registerLicense } from "@syncfusion/ej2-base"
 import {
   PdfViewerComponent,
   Toolbar,
@@ -21,6 +22,14 @@ import { Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import "./syncfusion-pdf-viewer.css"
+
+// Register Syncfusion license key
+const licenseKey = process.env.NEXT_PUBLIC_SYNCFUSION_LICENSE_KEY
+if (licenseKey) {
+  registerLicense(licenseKey)
+} else if (process.env.NODE_ENV === "production") {
+  console.warn("Syncfusion license key is missing. Please set NEXT_PUBLIC_SYNCFUSION_LICENSE_KEY.")
+}
 
 export type SyncfusionPdfViewerHandle = {
   goToPage: (page: number) => void
