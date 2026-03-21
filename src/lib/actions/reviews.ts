@@ -178,18 +178,35 @@ export type ReviewTimelineProgress = {
 }
 
 export async function getReviewTimelineProgress(reviewId: string): Promise<ReviewTimelineProgress> {
+    if (!reviewId) {
+        console.warn("getReviewTimelineProgress called without a reviewId")
+        return { startDate: new Date().toISOString(), phases: [] }
+    }
+
     const supabase = await createServerSupabaseClient()
 
     try {
+        console.log(`Fetching timeline progress for review: ${reviewId}`)
+        
         // 1. Get review start_date and project_id
         const { data: reviewData, error: reviewError } = await (supabase.from("reviews") as any)
             .select("start_date, project_id")
             .eq("id", reviewId)
             .single()
 
-        if (reviewError || !reviewData) {
-            console.error("Failed to fetch review for timeline:", reviewError)
-            throw new Error("Failed to fetch review data")
+        if (reviewError) {
+            console.error(`Failed to fetch review for timeline (ID: ${reviewId}):`, {
+                message: reviewError.message,
+                details: reviewError.details,
+                hint: reviewError.hint,
+                code: reviewError.code
+            })
+            return { startDate: new Date().toISOString(), phases: [] }
+        }
+
+        if (!reviewData) {
+            console.warn(`No review found for timeline with ID: ${reviewId}`)
+            return { startDate: new Date().toISOString(), phases: [] }
         }
 
         // 2. Get project phases
@@ -199,8 +216,17 @@ export async function getReviewTimelineProgress(reviewId: string): Promise<Revie
             .order("order_index", { ascending: true })
 
         if (phaseError) {
-            console.error("Failed to fetch project phases:", phaseError)
-            throw new Error("Failed to fetch project phases")
+            console.error(`Failed to fetch project phases for project ${reviewData.project_id}:`, {
+                message: phaseError.message,
+                details: phaseError.details,
+                hint: phaseError.hint,
+                code: phaseError.code
+            })
+            // Return review start date but no phases
+            return {
+                startDate: reviewData.start_date || new Date().toISOString(),
+                phases: [],
+            }
         }
 
         return {
@@ -208,7 +234,15 @@ export async function getReviewTimelineProgress(reviewId: string): Promise<Revie
             phases: phaseData || [],
         }
     } catch (error) {
-        console.error("Unexpected error fetching review timeline progress:", error)
-        throw new Error("Failed to fetch review timeline progress")
+        console.error("Unexpected error fetching review timeline progress:", error instanceof Error ? {
+            message: error.message,
+            stack: error.stack
+        } : error)
+        
+        // Return a safe fallback to prevent a 500 error page crash
+        return {
+            startDate: new Date().toISOString(),
+            phases: [],
+        }
     }
 }
