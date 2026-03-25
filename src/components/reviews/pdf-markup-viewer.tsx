@@ -37,6 +37,8 @@ import {
 } from "@/components/ui/accordion"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { logDocumentView, markReviewAsComplete } from "@/lib/actions/review-progress"
+import { CheckCircle2 } from "lucide-react"
 
 
 type PDFMarkupViewerProps = {
@@ -114,28 +116,25 @@ export function PDFMarkupViewer({ reviewId, document, childDocuments = [], initi
   const [filterDiscipline, setFilterDiscipline] = useState("all")
   const [filterStatus, setFilterStatus] = useState("all")
 
-  const availableImportances = useMemo(() =>
-    projectSettings?.importances?.length
-      ? projectSettings.importances
-      : DEFAULT_IMPORTANCES.map(name => ({ id: name, name })),
-    [projectSettings]
-  )
-  const availableDisciplines = useMemo(() =>
-    projectSettings?.disciplines?.length
-      ? projectSettings.disciplines
-      : DEFAULT_DISCIPLINES.map(name => ({ id: name, name })),
-    [projectSettings]
-  )
+  const availableImportances = useMemo(() => {
+    const custom = projectSettings?.importances?.filter(i => i.id)
+    return custom?.length ? custom : DEFAULT_IMPORTANCES.map(name => ({ id: name, name }))
+  }, [projectSettings])
+
+  const availableDisciplines = useMemo(() => {
+    const custom = projectSettings?.disciplines?.filter(d => d.id)
+    return custom?.length ? custom : DEFAULT_DISCIPLINES.map(name => ({ id: name, name }))
+  }, [projectSettings])
   const availableStatuses = useMemo(() =>
-    projectSettings?.statuses?.length ? projectSettings.statuses : [],
+    projectSettings?.statuses?.filter(s => s.id) ?? [],
     [projectSettings]
   )
   const availableStates = useMemo(() =>
-    projectSettings?.states?.length ? projectSettings.states : [],
+    projectSettings?.states?.filter(s => s.id) ?? [],
     [projectSettings]
   )
   const availableMilestones = useMemo(() =>
-    projectSettings?.availableMilestones?.length ? projectSettings.availableMilestones : [],
+    projectSettings?.availableMilestones?.filter(m => m.name) ?? [],
     [projectSettings]
   )
 
@@ -250,6 +249,13 @@ export function PDFMarkupViewer({ reviewId, document, childDocuments = [], initi
     }
   }, [document.id])
 
+  // Log document view
+  useEffect(() => {
+    if (reviewId && document.id) {
+      logDocumentView(reviewId, document.id)
+    }
+  }, [reviewId, document.id])
+
   // Filtering Logic
   const filteredAnnotations = useMemo(() => {
     return annotations
@@ -276,7 +282,7 @@ export function PDFMarkupViewer({ reviewId, document, childDocuments = [], initi
   }, [annotations, documentIssues, filterAuthor, filterDiscipline, filterStatus])
 
   const filterOptions = useMemo(() => {
-    const authors = Array.from(new Set(annotations.map((a) => a.createdBy)))
+    const authors = Array.from(new Set(annotations.map((a) => a.createdBy).filter(Boolean)))
     const disciplines = Array.from(new Set(documentIssues.map((i) => i.discipline).filter(Boolean)))
     const statuses = Array.from(new Set(documentIssues.map((i) => i.status).filter(Boolean)))
 
@@ -639,6 +645,20 @@ export function PDFMarkupViewer({ reviewId, document, childDocuments = [], initi
     }
   }, [viewerRef])
 
+  const handleCompleteReview = async () => {
+    const toastId = toast.loading("Marking review as complete...")
+    try {
+      const result = await markReviewAsComplete(reviewId)
+      if (result.success) {
+        toast.success(result.message, { id: toastId })
+      } else {
+        toast.error(result.message || "Failed to mark review as complete.", { id: toastId })
+      }
+    } catch (error) {
+      toast.error("An unexpected error occurred", { id: toastId })
+    }
+  }
+
   return (
     <div ref={containerRef} className="flex h-full w-full flex-col">
 
@@ -654,6 +674,16 @@ export function PDFMarkupViewer({ reviewId, document, childDocuments = [], initi
             <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
               {filteredAnnotations.length}
             </Badge>
+          </div>
+ 
+          <div className="px-4 py-2">
+            <Button 
+                onClick={handleCompleteReview}
+                className="w-full h-9 gap-2 bg-green-600 hover:bg-green-700 text-white shadow-sm text-xs"
+            >
+                <CheckCircle2 className="size-3.5" />
+                I've completed my review
+            </Button>
           </div>
 
           {/* Filters */}

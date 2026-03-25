@@ -237,6 +237,8 @@ export type ReviewUser = {
   role: string | null
   user_name: string | null
   company_name: string | null
+  started_at?: string | null
+  completed_at?: string | null
 }
 
 export type ProjectUser = {
@@ -296,6 +298,13 @@ export type Database = {
       project_classifications: TableDefinition<ProjectClassification>
       project_review_phases: TableDefinition<ProjectReviewPhase>
       project_reference_documents: TableDefinition<ProjectReferenceDocument>
+      review_document_views: TableDefinition<{
+        id: string
+        review_id: string
+        document_id: string
+        user_id: string
+        viewed_at: string
+      }>
     }
     Views: Record<string, never>
     Functions: Record<string, never>

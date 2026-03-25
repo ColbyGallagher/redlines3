@@ -23,6 +23,9 @@ export type ReviewUser = {
   avatarFallback: string
   company?: string
   status?: string
+  startedAt?: string | null
+  completedAt?: string | null
+  viewedDocumentIds?: string[]
 }
 
 export type ReviewDocument = {
@@ -129,7 +132,7 @@ function mapProject(project: ProjectRow | null): ReviewDetail["project"] {
 }
 
 
-function mapReviewers(reviewUsers: ReviewUserRow[] | null | undefined): ReviewUser[] {
+function mapReviewers(reviewUsers: ReviewUserRow[] | null | undefined, allViews: { user_id: string; document_id: string }[] = []): ReviewUser[] {
   if (!reviewUsers?.length) return []
 
   return reviewUsers.map((entry) => {
@@ -147,6 +150,9 @@ function mapReviewers(reviewUsers: ReviewUserRow[] | null | undefined): ReviewUs
       avatarFallback: toTitleCaseFallback(firstName, lastName),
       company: "ColbyGallagher",
       status: "Active",
+      startedAt: entry.started_at,
+      completedAt: entry.completed_at,
+      viewedDocumentIds: allViews.filter(v => v.user_id === user?.id).map(v => v.document_id)
     }
   })
 }
@@ -199,6 +205,7 @@ function mapReview(row: ReviewRow & {
   documents: DocumentRow[] | null
   issues: IssueRow[] | null
   review_users: ReviewUserRow[] | null
+  review_document_views: { user_id: string; document_id: string }[] | null
 }): ReviewDetail {
   return {
     id: row.id,
@@ -213,7 +220,7 @@ function mapReview(row: ReviewRow & {
     dueDateIssueComments: row.due_date_issue_comments ?? "",
     dueDateReplies: row.due_date_replies ?? "",
     project: mapProject(row.project),
-    reviewers: mapReviewers(row.review_users ?? []),
+    reviewers: mapReviewers(row.review_users ?? [], row.review_document_views ?? []),
     documents: mapDocuments(row.documents ?? []),
     issues: mapIssues(row.issues ?? []),
     summary: row.summary ?? "No summary available yet.",
@@ -250,7 +257,7 @@ export async function getReviewDetailById(reviewId: string): Promise<ReviewDetai
     const { data, error } = await supabase
       .from("reviews")
       .select(
-        "*, project:projects(*), documents(*), issues(*), review_users(*, user:users(*))",
+        "*, project:projects(*), documents(*), issues(*), review_users(*, user:users(*)), review_document_views(user_id, document_id)",
       )
       .eq("id", reviewId)
       .maybeSingle()
@@ -268,6 +275,7 @@ export async function getReviewDetailById(reviewId: string): Promise<ReviewDetai
       documents: DocumentRow[] | null
       issues: IssueRow[] | null
       review_users: ReviewUserRow[] | null
+      review_document_views: { user_id: string; document_id: string }[] | null
     }
 
     return mapReview(record)

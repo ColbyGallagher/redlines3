@@ -86,7 +86,7 @@ export function ReferenceDocumentsTable({ documents, projectId }: ReferenceDocum
                 {doc.user ? `${doc.user.first_name} ${doc.user.last_name}` : "Unknown"}
               </TableCell>
               <TableCell>
-                {doc.created_at ? new Date(doc.created_at).toLocaleDateString() : "-"}
+                {doc.created_at ? new Date(doc.created_at).toLocaleDateString("en-GB") : "-"}
               </TableCell>
               <TableCell className="text-right">
                 <div className="flex justify-end gap-2">

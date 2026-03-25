@@ -95,6 +95,7 @@ type NormalizedIssue = {
   commentCoordinates?: string | null
   pageNumber?: number | null
   createdByUserId?: string | null
+  state?: string | null
 }
 
 export type ProjectReviewSummary = {
@@ -263,6 +264,7 @@ function mapReview(row: ReviewRow & {
       const statusObj = (project.project_statuses ?? []).find(s => s.id === issue.status)
       const importanceObj = (project.project_importances ?? []).find(i => i.id === issue.importance)
       const disciplineObj = (project.project_disciplines ?? []).find(d => d.id === issue.discipline)
+      const stateObj = (project.project_states ?? []).find(s => s.id === issue.state)
 
       return {
         id: issue.id,
@@ -279,6 +281,7 @@ function mapReview(row: ReviewRow & {
         commentCoordinates: issue.comment_coordinates ?? null,
         pageNumber: issue.page_number ?? null,
         createdByUserId: issue.created_by_user_id ?? null,
+        state: stateObj?.name ?? issue.state ?? null,
       }
     }),
     lastUpdated: row.updated_at ?? row.created_at ?? null,
@@ -494,15 +497,7 @@ function deriveSettings(project: ProjectWithRelations): ProjectSettings {
     statuses: project.project_statuses ?? [],
     importances: project.project_importances ?? [],
     disciplines: project.project_disciplines ?? [],
-    states: (project.project_review_phases ?? []).map(p => ({
-      id: p.id,
-      project_id: p.project_id,
-      name: p.phase_name,
-      phase_name: p.phase_name,
-      order_index: p.order_index,
-      allowed_roles: p.allowed_roles,
-      permissions: p.permissions
-    })) as any[],
+    states: project.project_states ?? [],
     suitabilities: project.project_suitabilities ?? [],
     packages: (project as any).project_packages ?? [],
     classifications: (project as any).project_classifications ?? [],

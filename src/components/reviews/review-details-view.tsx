@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState, useCallback, useRef } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Calendar, Clock, Download, FileText, MapPin, Trash2, Users, ChevronRight, ChevronDown, Layers, ArrowUpDown, Filter, Search, X, ChevronUp } from "lucide-react"
+import { Calendar, Clock, Download, FileText, MapPin, Trash2, Users, ChevronRight, ChevronDown, Layers, ArrowUpDown, Filter, Search, X, ChevronUp, CheckCircle2, Trophy, Medal } from "lucide-react"
 import { toast } from "sonner"
 
 import { Badge } from "@/components/ui/badge"
@@ -49,6 +49,7 @@ import {
 import type { ReviewDetail } from "@/lib/data/reviews"
 import { deleteDocument } from "@/lib/actions/documents"
 import { updateReviewLifecycle, getReviewTimelineProgress, type ReviewTimelineProgress } from "@/lib/actions/reviews"
+import { markReviewAsComplete } from "@/lib/actions/review-progress"
 import {
   Select,
   SelectContent,
@@ -210,10 +211,6 @@ export function ReviewDetailsView({ review, isAdmin, availableMilestones = [] }:
   const executeLifecycleUpdate = (field: "status" | "specificStatus" | "phaseId" | "milestone" | "dueDate", value: string) => {
     startTransition(async () => {
       const payload: any = { [field]: value }
-      // Map generic "dueDate" to plural if we want to sync them? 
-      // Actually in this view, maybe we want to update THEM INDIVIDUALLY?
-      // But the user said "chaneg the milestone, due date and status".
-      // Let's stick to the same pattern as the table for now for "dueDate".
       const result = await updateReviewLifecycle(review.id, review.project.id, payload)
       if (result.success) {
         toast.success(result.message)
@@ -224,6 +221,46 @@ export function ReviewDetailsView({ review, isAdmin, availableMilestones = [] }:
       setConfirmOpen(false)
       setPendingUpdate(null)
     })
+  }
+
+  const handleCompleteReview = async () => {
+    const toastId = toast.loading("Marking review as complete...")
+    try {
+      const result = await markReviewAsComplete(review.id)
+      if (result.success) {
+        toast.success(result.message, { id: toastId })
+        router.refresh()
+      } else {
+        toast.error(result.message || "Failed to mark review as complete.", { id: toastId })
+      }
+    } catch (error) {
+      toast.error("An unexpected error occurred", { id: toastId })
+    }
+  }
+
+  const getReviewerStatus = (reviewer: any) => {
+    if (reviewer.completedAt) return { label: "Complete", variant: "default" as const, color: "bg-green-500" }
+    
+    const viewedCount = reviewer.viewedDocumentIds?.length || 0
+    const totalDocs = review.documents.length
+    
+    if (viewedCount === 0) return { label: "Not started", variant: "outline" as const, color: "bg-muted" }
+    if (viewedCount === totalDocs) return { label: "Opened all docs", variant: "secondary" as const, color: "bg-blue-500" }
+    return { label: `Opened ${viewedCount} doc${viewedCount === 1 ? "" : "s"}`, variant: "secondary" as const, color: "bg-amber-500" }
+  }
+
+  const formatDuration = (start?: string | null, end?: string | null) => {
+    if (!start || !end) return "-"
+    const startTime = new Date(start).getTime()
+    const endTime = new Date(end).getTime()
+    const diffMs = endTime - startTime
+    if (diffMs <= 0) return "-"
+    
+    const diffHrs = Math.floor(diffMs / (1000 * 60 * 60))
+    const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60))
+    
+    if (diffHrs > 0) return `${diffHrs}h ${diffMins}m`
+    return `${diffMins}m`
   }
 
   // Sorting and Filtering state
@@ -761,6 +798,14 @@ export function ReviewDetailsView({ review, isAdmin, availableMilestones = [] }:
             </div>
           )}
           <Button variant="outline">Export summary</Button>
+          <Button 
+            variant="default" 
+            className="bg-green-600 hover:bg-green-700 text-white gap-2"
+            onClick={handleCompleteReview}
+          >
+            <CheckCircle2 className="size-4" />
+            I've completed my review
+          </Button>
           <Button>Create issue</Button>
         </div>
       </div>
@@ -845,9 +890,6 @@ export function ReviewDetailsView({ review, isAdmin, availableMilestones = [] }:
                     "h-9 w-full px-3 py-1 text-sm rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
                     deadlineClass(review.dueDateIssueComments)
                   )}
-                  // Currently we use generic "dueDate" action which updates all 3. 
-                  // If we want individual updates, we'd need to update the server action.
-                  // For now, let's keep consistency with the table's "one due date" model.
                   value={review.dueDateIssueComments ? review.dueDateIssueComments.split('T')[0] : ""}
                   onChange={(e) => handleUpdate("dueDate", e.target.value, true)}
                   disabled={isPending}
@@ -902,9 +944,9 @@ export function ReviewDetailsView({ review, isAdmin, availableMilestones = [] }:
                 <TableRow>
                   <TableHead>Person</TableHead>
                   <TableHead>Role</TableHead>
-                  <TableHead>Company</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Issues raised</TableHead>
+                  <TableHead className="text-right">Issues</TableHead>
+                  <TableHead className="text-right whitespace-nowrap">Time taken</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -912,6 +954,7 @@ export function ReviewDetailsView({ review, isAdmin, availableMilestones = [] }:
                   const issuesRaisedCount = review.issues.filter(
                     (issue) => issue.createdByUserId === reviewer.id
                   ).length
+                  const status = getReviewerStatus(reviewer)
 
                   return (
                     <TableRow key={reviewer.id}>
@@ -929,15 +972,18 @@ export function ReviewDetailsView({ review, isAdmin, availableMilestones = [] }:
                         </div>
                       </TableCell>
                       <TableCell className="text-sm">{reviewer.role}</TableCell>
-                      <TableCell className="text-sm">
-                        {reviewer.company || "ColbyGallagher"}
-                      </TableCell>
                       <TableCell>
-                        <Badge variant="outline" className="font-normal">
-                          {reviewer.status || "Active"}
-                        </Badge>
+                        <div className="flex items-center gap-2">
+                           <div className={cn("size-2 rounded-full", status.color)} />
+                           <Badge variant={status.variant} className="font-normal text-[10px] sm:text-xs">
+                             {status.label}
+                           </Badge>
+                        </div>
                       </TableCell>
                       <TableCell className="text-right font-medium">{issuesRaisedCount}</TableCell>
+                      <TableCell className="text-right text-muted-foreground text-[10px] sm:text-xs font-mono">
+                        {formatDuration(reviewer.startedAt, reviewer.completedAt)}
+                      </TableCell>
                     </TableRow>
                   )
                 })}
@@ -1238,6 +1284,78 @@ export function ReviewDetailsView({ review, isAdmin, availableMilestones = [] }:
         </div>
       </section>
 
+      {/* Leaderboard Section */}
+      <section className="space-y-4">
+        <div className="flex items-center gap-2">
+            <Trophy className="size-5 text-amber-500" />
+            <h2 className="text-xl font-semibold">Review Leaderboard</h2>
+        </div>
+        <div className="grid gap-4 md:grid-cols-3">
+            {review.reviewers
+                .filter(r => r.completedAt)
+                .sort((a, b) => {
+                    const startTimeA = new Date(a.startedAt!).getTime()
+                    const endTimeA = new Date(a.completedAt!).getTime()
+                    const startTimeB = new Date(b.startedAt!).getTime()
+                    const endTimeB = new Date(b.completedAt!).getTime()
+                    return (endTimeA - startTimeA) - (endTimeB - startTimeB)
+                })
+                .slice(0, 3)
+                .map((reviewer, index) => {
+                    const timeTotal = formatDuration(reviewer.startedAt, reviewer.completedAt)
+                    const issuesCount = review.issues.filter(i => i.createdByUserId === reviewer.id).length
+                    
+                    return (
+                        <Card key={reviewer.id} className={cn(
+                            "relative overflow-hidden border-2",
+                            index === 0 ? "border-amber-500/20 bg-amber-50/10" : "border-muted"
+                        )}>
+                            {index === 0 && (
+                                <div className="absolute top-0 right-0 p-2 opacity-10">
+                                    <Trophy className="size-16 text-amber-500" />
+                                </div>
+                            )}
+                            <CardHeader className="flex flex-row items-center gap-4 space-y-0 pb-2">
+                                <div className="relative">
+                                    <Avatar className="size-10 border-2 border-background">
+                                        <AvatarFallback>{reviewer.avatarFallback}</AvatarFallback>
+                                    </Avatar>
+                                    <div className={cn(
+                                        "absolute -top-1 -right-1 size-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-sm border-2 border-background",
+                                        index === 0 ? "bg-amber-500" : index === 1 ? "bg-slate-400" : "bg-amber-700"
+                                    )}>
+                                        {index + 1}
+                                    </div>
+                                </div>
+                                <div>
+                                    <CardTitle className="text-sm font-bold">{reviewer.firstName} {reviewer.lastName}</CardTitle>
+                                    <CardDescription className="text-[10px]">{reviewer.role}</CardDescription>
+                                </div>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="flex items-center justify-between text-[10px]">
+                                    <div className="flex flex-col">
+                                        <span className="text-muted-foreground uppercase font-bold tracking-wider">Completion Time</span>
+                                        <span className="font-mono font-bold text-primary">{timeTotal}</span>
+                                    </div>
+                                    <div className="flex flex-col text-right">
+                                        <span className="text-muted-foreground uppercase font-bold tracking-wider">Issues</span>
+                                        <span className="font-bold">{issuesCount}</span>
+                                    </div>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    )
+                })
+            }
+            {review.reviewers.filter(r => r.completedAt).length === 0 && (
+                <Card className="md:col-span-3 border-dashed bg-muted/5 flex items-center justify-center py-8">
+                    <p className="text-muted-foreground text-sm italic opacity-60">No reviews completed yet. Leaderboard will update as reviewers finish.</p>
+                </Card>
+            )}
+        </div>
+      </section>
+
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <DialogContent>
           <DialogHeader>
@@ -1360,4 +1478,3 @@ function deadlineClass(value: string) {
 function lookupDocumentName(review: ReviewDetail, documentId: string) {
   return review.documents.find((document) => document.id === documentId)?.documentName ?? "Unknown document"
 }
-
