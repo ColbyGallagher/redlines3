@@ -220,3 +220,116 @@ export async function updateIssue(issueId: string, projectId: string, updates: P
         return { success: false, error: error instanceof Error ? error.message : "Failed to update issue" }
     }
 }
+
+export async function bulkUpdateIssues(issueIds: string[], projectId: string, updates: Partial<Issue>) {
+    const supabase = await createServerSupabaseClient()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) {
+        throw new Error("Unauthorized")
+    }
+
+    try {
+        // 1. Get user role
+        const { data: projectMember, error: memberError } = await (supabase.from("project_users" as any) as any)
+            .select("role")
+            .eq("project_id", projectId)
+            .eq("user_id", user.id)
+            .maybeSingle()
+
+        if (memberError) throw memberError
+
+        const userRole = (projectMember as any)?.role?.toLowerCase() || "viewer"
+        const adminRoles = ["admin", "project admin", "organization admin", "org admin", "developer"]
+        const isSystemAdmin = adminRoles.includes(userRole)
+
+        if (isSystemAdmin) {
+            // Bulk update for admins
+            const { error: updateError } = await (supabase.from("issues" as any) as any)
+                .update({
+                    ...updates,
+                    date_modified: new Date().toISOString(),
+                    modified_by_user_id: user.id
+                })
+                .in("id", issueIds)
+                .eq("project_id", projectId)
+
+            if (updateError) throw updateError
+        } else {
+            // Per-issue checks for non-admins
+            // For now, to keep it simple and safe, we'll call updateIssue per item
+            // This ensures all complex phase-based permission logic is applied
+            const results = await Promise.all(issueIds.map(id => updateIssue(id, projectId, updates)))
+            const failures = results.filter(r => !r.success)
+            if (failures.length > 0) {
+                return { 
+                    success: false, 
+                    error: `${failures.length} issues could not be updated due to permission restrictions or errors.` 
+                }
+            }
+        }
+
+        revalidateTag("issues")
+        revalidatePath(`/projects/${projectId}`)
+        return { success: true }
+    } catch (error) {
+        console.error("Error in bulk update:", error)
+        return { success: false, error: error instanceof Error ? error.message : "Failed to perform bulk update" }
+    }
+}
+
+export async function uploadIssueSnapshot(
+    issueId: string,
+    projectId: string,
+    reviewId: string,
+    formData: FormData
+) {
+    const supabase = await createServerSupabaseClient()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) {
+        throw new Error("Unauthorized")
+    }
+
+    try {
+        const file = formData.get("file") as File
+        if (!file) {
+            throw new Error("No file uploaded")
+        }
+
+        const filePath = `${projectId}/${reviewId}/${issueId}-snapshot.jpg`
+
+        // 1. Upload to Supabase Storage
+        const { error: uploadError } = await supabase.storage
+            .from("issue-snapshots")
+            .upload(filePath, file, {
+                contentType: "image/jpeg",
+                upsert: true,
+            })
+
+        if (uploadError) {
+            console.error("Storage upload failed:", uploadError)
+            return { success: false, error: "Failed to upload snapshot to storage" }
+        }
+
+        // 2. Update the issue record
+        const { error: updateError } = await (supabase.from("issues" as any) as any)
+            .update({ snapshot_path: filePath })
+            .eq("id", issueId)
+
+        if (updateError) {
+            console.error("Issue update failed:", updateError)
+            return { success: false, error: "Failed to link snapshot to issue" }
+        }
+
+        revalidateTag("issues")
+        revalidatePath(`/projects/${projectId}`)
+        revalidatePath(`/reviews/${reviewId}`)
+
+        return { success: true }
+    } catch (error) {
+        console.error("Error uploading snapshot:", error)
+        return { success: false, error: error instanceof Error ? error.message : "Unexpected error uploading snapshot" }
+    }
+}
+

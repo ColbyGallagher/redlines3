@@ -40,6 +40,8 @@ type ProjectWithRelations = ProjectRow & {
   project_response_roles: ProjectResponseRole[] | null
   project_users: ProjectUserRow[] | null
   project_review_phases: ProjectReviewPhase[] | null
+  project_packages: ProjectPackage[] | null
+  project_classifications: ProjectClassification[] | null
 }
 
 type NormalizedReview = {
@@ -96,6 +98,9 @@ type NormalizedIssue = {
   pageNumber?: number | null
   createdByUserId?: string | null
   state?: string | null
+  classification?: string | null
+  milestone?: string | null
+  snapshotPath?: string | null
 }
 
 export type ProjectReviewSummary = {
@@ -130,12 +135,19 @@ export type ProjectIssueSummary = {
   status: string
   importance: string
   discipline: string
+  state: string | null
+  classification: string | null
+  milestone: string | null
+  authorName: string
   dateCreated: string
   dateModified: string
   ageDays: number
   isHighPriority: boolean
   isLongOpen: boolean
   reviewId: string
+  documentId: string | null
+  pageNumber: number | null
+  snapshotPath: string | null
 }
 
 export type ProjectInsight = {
@@ -174,6 +186,7 @@ export type ProjectSettings = {
   importances: ProjectImportance[]
   disciplines: ProjectDiscipline[]
   states: ProjectState[]
+  phases: ProjectReviewPhase[]
   suitabilities: ProjectSuitability[]
   packages: ProjectPackage[]
   classifications: ProjectClassification[]
@@ -282,6 +295,9 @@ function mapReview(row: ReviewRow & {
         pageNumber: issue.page_number ?? null,
         createdByUserId: issue.created_by_user_id ?? null,
         state: stateObj?.name ?? issue.state ?? null,
+        classification: (project.project_classifications ?? []).find(c => c.id === issue.classification)?.name ?? issue.classification ?? null,
+        milestone: (project.project_milestones ?? []).find(m => m.id === issue.milestone)?.name ?? issue.milestone ?? null,
+        snapshotPath: issue.snapshot_path ?? null,
       }
     }),
     lastUpdated: row.updated_at ?? row.created_at ?? null,
@@ -382,18 +398,28 @@ function calculateIssueSummaries(today: Date, reviews: NormalizedReview[]): Proj
       const isHighPriority = importance.toLowerCase() === "high"
       const isLongOpen = isActive && ageDays >= LONG_OPEN_ISSUE_DAYS
 
+      const author = reviews.flatMap(r => r.reviewers).find(rev => rev.id === issue.createdByUserId)
+      const authorName = author ? `${author.firstName} ${author.lastName}` : "Unknown"
+
       return {
         id: issue.id,
         issueNumber: issue.issueNumber,
         status: issue.status,
         importance,
         discipline: issue.discipline,
+        state: issue.state ?? null,
+        classification: issue.classification ?? null,
+        milestone: issue.milestone ?? null,
+        authorName,
         dateCreated: (createdAt ?? new Date(0)).toISOString(),
         dateModified: (modifiedAt ?? createdAt ?? new Date(0)).toISOString(),
         ageDays,
         isHighPriority,
         isLongOpen,
         reviewId: issue.reviewId,
+        documentId: issue.documentId ?? null,
+        pageNumber: issue.pageNumber ?? null,
+        snapshotPath: issue.snapshotPath ?? null,
       }
     })
   })
@@ -498,6 +524,7 @@ function deriveSettings(project: ProjectWithRelations): ProjectSettings {
     importances: project.project_importances ?? [],
     disciplines: project.project_disciplines ?? [],
     states: project.project_states ?? [],
+    phases: project.project_review_phases ?? [],
     suitabilities: project.project_suitabilities ?? [],
     packages: (project as any).project_packages ?? [],
     classifications: (project as any).project_classifications ?? [],

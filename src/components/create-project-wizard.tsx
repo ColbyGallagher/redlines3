@@ -82,9 +82,23 @@ type CreateProjectResponse = {
   error?: string
 }
 
-export function CreateProjectWizard() {
+export type CreateProjectWizardProps = {
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  showTrigger?: boolean
+}
+
+export function CreateProjectWizard({ 
+  open: propOpen, 
+  onOpenChange: propOnOpenChange,
+  showTrigger = true 
+}: CreateProjectWizardProps) {
   const router = useRouter()
-  const [open, setOpen] = React.useState(false)
+  const [internalOpen, setInternalOpen] = React.useState(false)
+  
+  const open = propOpen !== undefined ? propOpen : internalOpen
+  const setOpen = propOnOpenChange !== undefined ? propOnOpenChange : setInternalOpen
+
   const [step, setStep] = React.useState<1 | 2>(1)
   const [formState, setFormState] = React.useState<CreateProjectFormState>(
     initialFormState
@@ -215,11 +229,13 @@ export function CreateProjectWizard() {
 
   return (
     <Sheet open={open} onOpenChange={handleOpenChange}>
-      <SheetTrigger asChild>
-        <Button className="w-full justify-between" size="lg">
-          Create new project
-        </Button>
-      </SheetTrigger>
+      {showTrigger && (
+        <SheetTrigger asChild>
+          <Button className="w-full justify-between" size="lg">
+            Create new project
+          </Button>
+        </SheetTrigger>
+      )}
       <SheetContent side="right" className="sm:max-w-xl">
         <SheetHeader className="border-b pb-4">
           <div className="flex items-center justify-between">

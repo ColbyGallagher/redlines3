@@ -1,0 +1,15 @@
+"use client"
+
+import Link from "next/link"
+import { notFound, useParams, useSearchParams } from "next/navigation"
+import { useEffect, useState } from "react"
+import { Loader2 } from "lucide-react"
+
+import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb"
+import { PDFMarkupViewerClient } from "@/components/reviews/pdf-markup-client-wrapper"
+import { IFCModelViewerClient } from "@/components/reviews/ifc-model-client-wrapper"
+import { getAnnotationsForDocument, getChildDocuments, getDocumentForReview, getReviewDetailById } from "@/lib/data/reviews"
+
+// Since this was previously a server component but we need to handle searchParams reactively if possible, 
+// or just keep it simple. Actually, the previous one was a server component.
+// I'll revert it to a server component structure but fixed.

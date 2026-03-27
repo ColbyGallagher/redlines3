@@ -38,6 +38,7 @@ import {
 import { createDocument, createDocumentsBatch, type CreateDocumentState } from "@/lib/actions/documents"
 import { ExtractionSetup } from "@/lib/db/types"
 import { extractMetadataFromPDF, extractAllPagesMetadata } from "@/lib/utils/pdf-extraction"
+import { useBackgroundUpload, type FileEntry } from "@/components/providers/upload-provider"
 
 type UploadDocumentDialogProps = {
     reviewId: string
@@ -45,29 +46,10 @@ type UploadDocumentDialogProps = {
     bucket?: string
 }
 
-type PageEntry = {
-    pageNumber: number
-    name: string
-    code: string
-    revision: string
-    isExtracting?: boolean
-}
-
-type FileEntry = {
-    file: File
-    name: string
-    code: string
-    revision: string
-    isMultiPage: boolean
-    pages: PageEntry[]
-    isExtracting?: boolean
-    totalPages?: number
-}
-
 export function UploadDocumentDialog({ reviewId, projectId, bucket = "documents" }: UploadDocumentDialogProps) {
     const [open, setOpen] = useState(false)
     const [fileEntries, setFileEntries] = useState<FileEntry[]>([])
-    const [isUploading, setIsUploading] = useState(false)
+    const { startReviewUpload } = useBackgroundUpload()
     const [setups, setSetups] = useState<ExtractionSetup[]>([])
     const [selectedSetupId, setSelectedSetupId] = useState<string>("")
     const [isLoadingSetups, setIsLoadingSetups] = useState(false)
@@ -297,89 +279,15 @@ export function UploadDocumentDialog({ reviewId, projectId, bucket = "documents"
         )
     }
 
-    const handleUpload = async () => {
+    const handleUpload = () => {
         if (!fileEntries.length) return
-
-        const batchDocuments: any[] = []
-        setIsUploading(true)
-        try {
-            for (const entry of fileEntries) {
-                // 1. Storage Upload (one per literal file)
-                const sanitizedName = entry.file.name.replace(/[^a-zA-Z0-9.-]/g, "_")
-                const filePath = `${projectId}/${reviewId}/${Date.now()}-${sanitizedName}`
-                
-                const { error: uploadError } = await supabase.storage
-                    .from(bucket)
-                    .upload(filePath, entry.file)
-
-                if (uploadError) {
-                    throw new Error(`Upload error for ${entry.file.name}: ${uploadError.message}`)
-                }
-
-                const { data: publicUrlData } = supabase.storage
-                    .from(bucket)
-                    .getPublicUrl(filePath)
-                
-                const publicUrl = publicUrlData.publicUrl
-
-                // 2. Prepare Metadata for Batch
-                if (entry.isMultiPage && entry.pages.length > 0) {
-                    batchDocuments.push({
-                        documentName: entry.name || entry.file.name,
-                        documentCode: entry.code,
-                        revision: entry.revision,
-                        fileSize: entry.file.size.toString(),
-                        pdfUrl: publicUrl,
-                        state: "Combined set",
-                        children: entry.pages.map(page => ({
-                            documentName: page.name,
-                            documentCode: page.code,
-                            revision: page.revision,
-                            fileSize: entry.file.size.toString(),
-                            pdfUrl: publicUrl,
-                            pageNumber: page.pageNumber,
-                            metadata: {
-                                isMultiPage: true,
-                                originalFilename: entry.file.name
-                            }
-                        }))
-                    })
-                } else {
-                    batchDocuments.push({
-                        documentName: entry.name || entry.file.name,
-                        documentCode: entry.code,
-                        revision: entry.revision,
-                        fileSize: entry.file.size.toString(),
-                        pdfUrl: publicUrl,
-                    })
-                }
-            }
-
-            // 3. Send all metadata in ONE request
-            const result = await createDocumentsBatch({
-                reviewId,
-                projectId,
-                documents: batchDocuments
-            })
-
-            if (result.message === "Success") {
-                toast.success("All documents uploaded successfully")
-                setFileEntries([])
-                setOpen(false)
-                router.refresh()
-            } else {
-                toast.error(result.message || "Failed to finalize upload")
-            }
-        } catch (error) {
-            console.error("Upload error:", error)
-            toast.error(error instanceof Error ? error.message : "Upload failed")
-        } finally {
-            setIsUploading(false)
-        }
+        startReviewUpload(fileEntries, projectId, reviewId, bucket)
+        setFileEntries([])
+        setOpen(false)
     }
 
     const handleDialogOpenChange = (nextOpen: boolean) => {
-        if (!nextOpen && fileEntries.length && !isUploading) {
+        if (!nextOpen && fileEntries.length) {
             const confirmClose = window.confirm(
                 "You have selected documents. Upload them before closing? Click Cancel to stay open and Upload, or OK to close without uploading.",
             )
@@ -656,8 +564,7 @@ export function UploadDocumentDialog({ reviewId, projectId, bucket = "documents"
                     )}
                 </div>
                 <DialogFooter>
-                    <Button type="submit" onClick={handleUpload} disabled={!fileEntries.length || isUploading}>
-                        {isUploading && <Loader2 className="mr-2 size-4 animate-spin" />}
+                    <Button type="submit" onClick={handleUpload} disabled={!fileEntries.length}>
                         Upload
                     </Button>
                 </DialogFooter>

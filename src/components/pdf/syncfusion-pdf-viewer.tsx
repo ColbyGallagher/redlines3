@@ -1,6 +1,6 @@
 "use client"
 
-import { useRef, useEffect, forwardRef, useImperativeHandle, useState, useMemo } from "react"
+import { useRef, useEffect, forwardRef, useImperativeHandle, useState, useMemo, useCallback, memo } from "react"
 import { registerLicense } from "@syncfusion/ej2-base"
 import {
   PdfViewerComponent,
@@ -39,6 +39,7 @@ export type SyncfusionPdfViewerHandle = {
   getAnnotations: () => any[]
   getAnnotationById: (id: string) => any
   getPageInfo: (pageNumber: number) => { width: number; height: number }
+  selectAnnotation: (annotationId: string) => void
   setAnnotationMode: (mode: 'None' | 'StickyNotes' | 'FreeText' | 'Shape' | 'Ink') => void
 }
 
@@ -72,7 +73,7 @@ type SyncfusionPdfViewerProps = {
  * Standalone Syncfusion PDF viewer wrapper.
  * Accepts a documentPath (URL or base64) and exposes imperative navigation via ref.
  */
-const SyncfusionPdfViewer = forwardRef<SyncfusionPdfViewerHandle, SyncfusionPdfViewerProps>(
+const SyncfusionPdfViewer = memo(forwardRef<SyncfusionPdfViewerHandle, SyncfusionPdfViewerProps>(
   function SyncfusionPdfViewer(
     {
       documentPath,
@@ -93,10 +94,46 @@ const SyncfusionPdfViewer = forwardRef<SyncfusionPdfViewerHandle, SyncfusionPdfV
     const viewerRef = useRef<PdfViewerComponent>(null)
     const containerRef = useRef<HTMLDivElement>(null)
     const [isMounted, setIsMounted] = useState(false)
+    const [stableDocumentPath, setStableDocumentPath] = useState<string | null>(null)
 
+    // Convert HTTP URLs to Blob URLs to prevent Syncfusion from repeatedly re-fetching large documents
     useEffect(() => {
-      setIsMounted(true)
-    }, [])
+      if (!documentPath) return;
+
+      const isHttp = documentPath.startsWith('http://') || documentPath.startsWith('https://');
+      if (!isHttp) {
+        setStableDocumentPath(documentPath);
+        return;
+      }
+
+      let isActive = true;
+      let blobUrl: string | null = null;
+
+      const fetchAsBlob = async () => {
+        try {
+          const response = await fetch(documentPath);
+          if (!response.ok) throw new Error("Failed to fetch document: " + response.statusText);
+          const blob = await response.blob();
+          if (!isActive) return;
+          
+          blobUrl = URL.createObjectURL(blob);
+          setStableDocumentPath(blobUrl);
+        } catch (error) {
+          console.error("Error creating blob URL for PDF:", error);
+          // Fallback to the original URL if fetch fails
+          if (isActive) setStableDocumentPath(documentPath);
+        }
+      };
+
+      fetchAsBlob();
+
+      return () => {
+        isActive = false;
+        if (blobUrl) {
+          URL.revokeObjectURL(blobUrl);
+        }
+      };
+    }, [documentPath]);
 
     const absoluteResourceUrl = useMemo(() => {
       if (typeof window === "undefined") return "/ej2-pdfviewer-lib"
@@ -238,6 +275,10 @@ const SyncfusionPdfViewer = forwardRef<SyncfusionPdfViewerHandle, SyncfusionPdfV
           height: info?.height ?? 0
         }
       },
+      selectAnnotation(annotationId: string) {
+        // @ts-ignore - selectAnnotation exists on annotationModule but may not be in types
+        viewerRef.current?.annotationModule?.selectAnnotation(annotationId)
+      },
       setAnnotationMode(mode: any) {
         viewerRef.current?.annotation?.setAnnotationMode(mode)
       }
@@ -275,26 +316,76 @@ const SyncfusionPdfViewer = forwardRef<SyncfusionPdfViewerHandle, SyncfusionPdfV
       }
     }, [isMounted])
 
-    // Load a new document when the path changes
-    useEffect(() => {
-      if (viewerRef.current && documentPath) {
-        viewerRef.current.load(documentPath, "")
+    // We no longer manually call viewerRef.current.load() here
+    // because PdfViewerComponent handles it when `documentPath` prop changes.
+    // Our stabilization effect above ensures it only receives a new prop if the base URL actually changes.
+
+    const viewerStyle = useMemo(() => ({ height: "100%", width: "100%" }), [])
+    const toolbarSettings = useMemo<any>(() => ({
+      showTooltip: true,
+      toolbarItems: [
+        "SelectionTool",
+        "SearchOption",
+        {
+          id: "IssueBtn",
+          text: "Create New Issue",
+          prefixIcon: "e-icons e-plus",
+          tooltipText: "Create a new issue on the document",
+          align: "Left",
+          cssClass: "e-primary-cta",
+        },
+        "UndoRedoTool",
+        "PageNavigationTool",
+        "MagnificationTool",
+        "DownloadOption",
+      ],
+    }), [])
+
+    const handleDocumentLoad = useCallback((args: any) => {
+      const count = args.pageCount ?? viewerRef.current?.pageCount ?? 0;
+      onDocumentLoad?.(count)
+    }, [onDocumentLoad])
+
+    const handlePageChange = useCallback((args: any) => {
+      onPageChange?.(args.currentPageNumber)
+    }, [onPageChange])
+
+    const handleZoomChange = useCallback((args: any) => {
+      let zoomVal = args.currentZoomFactor ?? (args as any).zoomFactor ?? viewerRef.current?.magnificationModule?.zoomFactor ?? 1
+      if (zoomVal <= 10) {
+        zoomVal = zoomVal * 100
       }
-    }, [documentPath])
+      setCurrentZoom(zoomVal)
+      onZoomChange?.(zoomVal / 100)
+    }, [onZoomChange])
+
+    useEffect(() => {
+      setIsMounted(true)
+    }, [])
 
     if (!isMounted) return <div style={{ height }} />
+
+    if (!stableDocumentPath) {
+      return (
+        <div style={{ height, width: "100%", display: "flex", alignItems: "center", justifyContent: "center" }} className="bg-muted/10 text-muted-foreground">
+           <div className="flex flex-col items-center gap-3">
+             <div className="size-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+             <span className="text-xs font-semibold uppercase tracking-widest text-primary">Downloading Document...</span>
+           </div>
+        </div>
+      )
+    }
 
     return (
       <div ref={containerRef} style={{ height, width: "100%" }} className="syncfusion-viewer-container">
         <PdfViewerComponent
           ref={viewerRef}
           id="syncfusion-pdf-viewer"
-        documentPath={documentPath}
-        // Point to local WASM resources with absolute URL
+        documentPath={stableDocumentPath}
         resourceUrl={absoluteResourceUrl}
         width="100%"
         height="100%"
-        style={{ height: "100%", width: "100%" }}
+        style={viewerStyle}
         enableToolbar={showToolbar}
         enableNavigationToolbar={showToolbar}
         enableDownload={false}
@@ -304,49 +395,11 @@ const SyncfusionPdfViewer = forwardRef<SyncfusionPdfViewerHandle, SyncfusionPdfV
         enableFormFields={false}
         minZoom={10}
         maxZoom={400}
-        toolbarSettings={{
-          showTooltip: true,
-          toolbarItems: [
-            "SelectionTool",
-            "SearchOption",
-            {
-              id: "IssueBtn",
-              text: "Create New Issue",
-              prefixIcon: "e-icons e-plus",
-              tooltipText: "Create a new issue on the document",
-              align: "Left",
-              cssClass: "e-primary-cta",
-            },
-            "UndoRedoTool",
-            "PageNavigationTool",
-            "MagnificationTool",
-            "DownloadOption",
-          ],
-        }}
+        toolbarSettings={toolbarSettings}
         toolbarClick={onToolbarClick}
-        documentLoad={(args) => {
-          const count = args.pageCount ?? viewerRef.current?.pageCount ?? 0;
-          onDocumentLoad?.(count)
-        }}
-        pageChange={(args) => {
-          onPageChange?.(args.currentPageNumber)
-        }}
-        zoomChange={(args) => {
-          // Syncfusion magnitude in events is usually the factor (e.g. 1.1 for 110%)
-          // But magnificationModule.zoomTo(percentage) expects 110.
-          // Support multiple property names and fallback to instance
-          let zoomVal = args.currentZoomFactor ?? (args as any).zoomFactor ?? viewerRef.current?.magnificationModule?.zoomFactor ?? 1
-          
-          // Normalize to percentage (10-400)
-          // If the value is very small (e.g. < 10), it's definitely a factor (1.0) instead of percentage (100)
-          if (zoomVal <= 10) {
-            zoomVal = zoomVal * 100
-          }
-          
-          setCurrentZoom(zoomVal)
-          // onZoomChange expects the scale factor (e.g. 1.0 for 100%)
-          onZoomChange?.(zoomVal / 100)
-        }}
+        documentLoad={handleDocumentLoad}
+        pageChange={handlePageChange}
+        zoomChange={handleZoomChange}
         annotationAdd={onAnnotationAdd}
         annotationSelect={onAnnotationSelect}
         annotationRemove={onAnnotationRemove}
@@ -371,7 +424,7 @@ const SyncfusionPdfViewer = forwardRef<SyncfusionPdfViewerHandle, SyncfusionPdfV
       </div>
     )
   }
-)
+))
 
 SyncfusionPdfViewer.displayName = "SyncfusionPdfViewer"
 

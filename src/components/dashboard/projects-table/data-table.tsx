@@ -32,22 +32,18 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { columns } from "./columns"
-import type { ReviewSummary } from "@/lib/data/reviews"
+import type { ProjectSummary } from "@/lib/data/projects"
 
 type DataTableProps = {
-  data: ReviewSummary[]
+  data: ProjectSummary[]
 }
 
-export function ReviewsDataTable({ data }: DataTableProps) {
+export function ProjectsDataTable({ data }: DataTableProps) {
   const router = useRouter()
   const [sorting, setSorting] = useState<SortingState>([])
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
   const [rowSelection, setRowSelection] = useState({})
-
-  const navigateReview = useCallback((reviewId: string) => {
-    router.push(`/reviews/${reviewId}`)
-  }, [router])
 
   const navigateProject = useCallback((projectId: string) => {
     router.push(`/projects/${projectId}`)
@@ -56,9 +52,9 @@ export function ReviewsDataTable({ data }: DataTableProps) {
   const handleRowKeyDown = useCallback((event: KeyboardEvent<HTMLTableRowElement>, id: string) => {
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault()
-      navigateReview(id)
+      navigateProject(id)
     }
-  }, [navigateReview])
+  }, [navigateProject])
 
   const table = useReactTable({
     data,
@@ -78,10 +74,6 @@ export function ReviewsDataTable({ data }: DataTableProps) {
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
-    meta: {
-      navigateReview,
-      navigateProject,
-    },
   })
 
   const selectedCount = useMemo(() => table.getSelectedRowModel().rows.length, [table])
@@ -135,8 +127,8 @@ export function ReviewsDataTable({ data }: DataTableProps) {
                 <TableRow
                   key={row.id}
                   data-state={row.getIsSelected() && "selected"}
-                  onClick={() => navigateReview(row.original.id)}
-                  onKeyDown={(event) => handleRowKeyDown(event, row.original.id)}
+                  onClick={() => navigateProject(row.original.project.id)}
+                  onKeyDown={(event) => handleRowKeyDown(event, row.original.project.id)}
                   tabIndex={0}
                   className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 >
@@ -150,7 +142,7 @@ export function ReviewsDataTable({ data }: DataTableProps) {
             ) : (
               <TableRow>
                 <TableCell colSpan={columns.length} className="h-24 text-center text-sm text-muted-foreground">
-                  No results found
+                  No projects found
                 </TableCell>
               </TableRow>
             )}
@@ -160,8 +152,6 @@ export function ReviewsDataTable({ data }: DataTableProps) {
       <div className="flex flex-col gap-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
         <div>
           {selectedCount} selected of {table.getFilteredRowModel().rows.length} shown
-          {table.getFilteredSelectedRowModel().rows.length !== selectedCount &&
-            ` (${table.getFilteredSelectedRowModel().rows.length} in filtered view)`}
         </div>
         <div className="flex items-center gap-2">
           <Button

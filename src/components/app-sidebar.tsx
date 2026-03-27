@@ -5,6 +5,7 @@ import {
   ChevronRight,
   ClipboardList,
   Folder,
+  Home,
   LayoutDashboard,
   Settings,
   Settings2,
@@ -193,19 +194,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     [companies],
   )
 
-  const reviewsByProject = useMemo(() => {
-    const groups = new Map<string, SidebarReview[]>()
-
-    for (const review of recentReviews) {
-      const projectLabel = review.projectName || "Unassigned project"
-      if (!groups.has(projectLabel)) {
-        groups.set(projectLabel, [])
-      }
-      groups.get(projectLabel)?.push(review)
-    }
-
-    return Array.from(groups.entries()).sort(([a], [b]) => a.localeCompare(b))
-  }, [recentReviews])
 
   if (!isMounted) {
     return null
@@ -231,10 +219,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <SidebarGroup>
           <SidebarMenu>
             <SidebarMenuItem>
-              <SidebarMenuButton asChild isActive={isDashboardActive} tooltip="Dashboard">
+              <SidebarMenuButton asChild isActive={isDashboardActive} tooltip="Home">
                 <Link href="/dashboard">
-                  <LayoutDashboard />
-                  <span>Dashboard</span>
+                  <Home />
+                  <span>Home</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -294,10 +282,15 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
               return (
                 <SidebarMenuItem key={review.id}>
-                  <SidebarMenuButton asChild tooltip={review.name} isActive={isActive}>
+                  <SidebarMenuButton asChild tooltip={review.name} isActive={isActive} size="lg">
                     <Link href={review.href}>
                       <ClipboardList />
-                      <span>{review.name}</span>
+                      <div className="flex flex-col gap-0.5 leading-none overflow-hidden">
+                        <span className="text-[10px] text-muted-foreground truncate">
+                          {review.projectName || "Unassigned project"}
+                        </span>
+                        <span className="font-medium truncate">{review.name}</span>
+                      </div>
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -306,37 +299,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           </SidebarMenu>
         </SidebarGroup>
 
-        {reviewsByProject.length > 0 && (
-          <SidebarGroup className="group-data-[collapsible=icon]:hidden">
-            <SidebarGroupLabel>Reviews by project</SidebarGroupLabel>
-            <SidebarGroupContent className="space-y-3">
-              {reviewsByProject.map(([projectName, reviews]) => (
-                <div key={projectName} className="space-y-1">
-                  <p className="px-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    {projectName}
-                  </p>
-                  <SidebarMenu>
-                    {reviews.map((review) => {
-                      const isActive = pathname?.startsWith(`/reviews/${review.id}`)
-
-                      return (
-                        <SidebarMenuItem key={review.id}>
-                          <SidebarMenuButton asChild tooltip={review.name} isActive={isActive}>
-                            <Link href={review.href}>
-                              <ClipboardList />
-                              <span>{review.name}</span>
-                            </Link>
-                          </SidebarMenuButton>
-                        </SidebarMenuItem>
-                      )
-                    })}
-                  </SidebarMenu>
-                </div>
-              ))}
-            </SidebarGroupContent>
-          </SidebarGroup>
-        )}
-
         <SidebarGroup>
           <SidebarMenu>
             <SidebarMenuItem>
@@ -344,20 +306,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 <Link href="#">
                   <BookOpen />
                   <span>Tutorials</span>
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarGroup>
-
-        <SidebarGroup className="group-data-[collapsible=icon]:hidden">
-          <SidebarGroupLabel>Settings</SidebarGroupLabel>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton asChild isActive={pathname === "/settings"} tooltip="Settings">
-                <Link href="/settings">
-                  <Settings />
-                  <span>Settings</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -374,13 +322,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           </SidebarMenu>
         </SidebarGroup>
       </SidebarContent>
+
       <SidebarFooter>
-        <NavUser user={user} />
-        {sidebarTeams.length > 0 && (
-          <div className="group-data-[state=collapsed]:hidden">
-            <TeamSwitcher teams={sidebarTeams} />
-          </div>
-        )}
+        <NavUser user={user} teams={sidebarTeams} isAdmin={isAdmin} />
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>

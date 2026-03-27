@@ -47,7 +47,7 @@ export default async function ProjectSettingsPage({ params }: ProjectSettingsPag
                         <Breadcrumb>
                             <BreadcrumbList>
                                 <BreadcrumbItem>
-                                    <BreadcrumbLink href="/dashboard">Dashboard</BreadcrumbLink>
+                                    <BreadcrumbLink href="/dashboard">Home</BreadcrumbLink>
                                 </BreadcrumbItem>
                                 <BreadcrumbSeparator />
                                 <BreadcrumbItem>

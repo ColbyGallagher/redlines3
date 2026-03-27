@@ -1,3 +1,4 @@
+import Link from "next/link"
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -26,11 +27,13 @@ import {
 import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { ReviewsDataTable } from "@/components/dashboard/reviews-table/data-table"
-import { CreateProjectWizard } from "@/components/create-project-wizard"
-import { CreateReviewWizard } from "@/components/create-review-wizard"
+import { ProjectsDataTable } from "@/components/dashboard/projects-table/data-table"
 import { getProjectSummaries } from "@/lib/data/projects"
 import { getReviewSummaries } from "@/lib/data/reviews"
 import { Search } from "lucide-react"
+import { cn } from "@/lib/utils"
+import { ClickToScroll } from "@/components/dashboard/click-to-scroll"
+import { DashboardActions } from "@/components/dashboard/dashboard-actions"
 
 export const dynamic = "force-dynamic"
 
@@ -56,58 +59,23 @@ export default async function Page() {
               />
               <Breadcrumb>
                 <BreadcrumbList>
-                  <BreadcrumbItem className="hidden md:block">
-                    <BreadcrumbLink href="#">Dashboard</BreadcrumbLink>
-                  </BreadcrumbItem>
-                  <BreadcrumbSeparator className="hidden md:block" />
                   <BreadcrumbItem>
-                    <BreadcrumbPage>Overview</BreadcrumbPage>
+                    <BreadcrumbPage>Home</BreadcrumbPage>
                   </BreadcrumbItem>
                 </BreadcrumbList>
               </Breadcrumb>
             </div>
-            <div className="flex flex-1 justify-center">
-              <div className="relative w-full max-w-md">
+            <div className="flex flex-1 items-center justify-end gap-3">
+              <div className="relative w-full max-w-sm">
                 <Search className="text-muted-foreground absolute left-3 top-1/2 size-4 -translate-y-1/2" />
                 <Input
                   type="search"
-                  placeholder="Search your workspace"
+                  placeholder="Search your workspace..."
                   aria-label="Search workspace"
                   className="pl-9"
                 />
               </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" className="min-w-[160px] justify-between">
-                    Team Portfolio
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-64">
-                  <DropdownMenuLabel>Select workspace</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem>All teams</DropdownMenuItem>
-                  <DropdownMenuItem>Design / Engineering</DropdownMenuItem>
-                  <DropdownMenuItem>Construction Partners</DropdownMenuItem>
-                  <DropdownMenuItem>Clients</DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" className="min-w-[140px] justify-between">
-                    Last 30 days
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
-                  <DropdownMenuLabel>Time range</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem>Today</DropdownMenuItem>
-                  <DropdownMenuItem>This week</DropdownMenuItem>
-                  <DropdownMenuItem>This month</DropdownMenuItem>
-                  <DropdownMenuItem>Quarter to date</DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <DashboardActions />
             </div>
           </div>
       </header>
@@ -118,116 +86,125 @@ export default async function Page() {
               Placeholder metrics to illustrate how project reviews, approvals, and upcoming checkpoints will surface here after login.
             </p>
           </section>
-          <section className="grid gap-4 md:grid-cols-3">
-            <Card>
-              <CardHeader>
-                <CardTitle>Open Reviews</CardTitle>
-                <CardDescription>Reviews awaiting attention across your portfolio.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className="text-3xl font-semibold">{reviewSummaries.length}</p>
-                <p className="text-muted-foreground text-xs">
-                  Tracking reviews that have activity within the selected timeframe.
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
+          <section className="grid gap-4 md:grid-cols-2">
+            <Card className="flex flex-col">
               <CardHeader>
                 <CardTitle>Active Projects</CardTitle>
                 <CardDescription>Total projects with ongoing review work.</CardDescription>
               </CardHeader>
-              <CardContent>
-                <p className="text-3xl font-semibold">{projectSummaries.length}</p>
-                <p className="text-muted-foreground text-xs">Includes projects with recent document coordination.</p>
+              <CardContent className="flex-1 space-y-4">
+                <div>
+                  <p className="text-3xl font-semibold">{projectSummaries.length}</p>
+                  <p className="text-muted-foreground text-xs">
+                    Projects with recent document coordination.
+                  </p>
+                </div>
+                {projectSummaries.length > 0 && (
+                  <>
+                    <Separator />
+                    <div className="space-y-3">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Recent activity</p>
+                      <div className="space-y-2">
+                        {projectSummaries
+                          .sort((a, b) => new Date(b.lastUpdated).getTime() - new Date(a.lastUpdated).getTime())
+                          .slice(0, 3)
+                          .map((summary) => (
+                            <div key={summary.project.id} className="flex items-center justify-between gap-2 text-sm">
+                              <Link 
+                                href={`/projects/${summary.project.id}`}
+                                className="font-medium hover:underline truncate"
+                              >
+                                {summary.project.projectName}
+                              </Link>
+                              <span className="text-[10px] text-muted-foreground font-medium px-1.5 py-0.5 rounded-md border border-border bg-muted/30 shrink-0">
+                                {summary.project.projectNumber}
+                              </span>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  </>
+                )}
               </CardContent>
             </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle>Closed Issues</CardTitle>
-                <CardDescription>Total resolved by your organization</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className="text-3xl font-semibold">{totalClosedIssues}</p>
-                <p className="text-muted-foreground text-xs">Tracking all teams across the workspace</p>
+
+            <Card className="flex flex-col">
+              <ClickToScroll targetId="review-tracker" className="cursor-pointer transition-colors hover:bg-muted/30">
+                <CardHeader>
+                  <CardTitle>Open Reviews</CardTitle>
+                  <CardDescription>Reviews awaiting attention across your portfolio.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div>
+                    <p className="text-3xl font-semibold">{reviewSummaries.length}</p>
+                    <p className="text-muted-foreground text-xs">
+                      Total active reviews across all projects.
+                    </p>
+                  </div>
+                </CardContent>
+              </ClickToScroll>
+              <CardContent className="flex-1 space-y-4 pt-0">
+                {reviewSummaries.length > 0 && (
+                  <>
+                    <Separator />
+                    <div className="space-y-3">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Urgent attention</p>
+                      <div className="space-y-2">
+                        {reviewSummaries
+                          .filter(r => r.status !== 'Approved')
+                          .sort((a, b) => {
+                            if (!a.dueDate) return 1
+                            if (!b.dueDate) return -1
+                            return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()
+                          })
+                          .slice(0, 3)
+                          .map((review) => (
+                            <div key={review.id} className="flex items-center justify-between gap-2 text-sm">
+                              <div className="flex flex-col truncate">
+                                <Link 
+                                  href={`/reviews/${review.id}`}
+                                  className="font-medium hover:underline truncate"
+                                >
+                                  {review.reviewName}
+                                </Link>
+                                <span className="text-muted-foreground text-[10px] truncate">
+                                  {review.project?.name}
+                                </span>
+                              </div>
+                              {review.dueDate && (
+                                <span className={cn(
+                                  "text-[10px] font-medium px-1.5 py-0.5 rounded-full border shrink-0",
+                                  new Date(review.dueDate) < new Date() 
+                                    ? "text-destructive border-destructive/30 bg-destructive/10" 
+                                    : "text-muted-foreground border-border bg-muted/50"
+                                )}>
+                                  {new Date(review.dueDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  </>
+                )}
               </CardContent>
             </Card>
+
+
           </section>
-          <section className="grid gap-4 lg:grid-cols-3">
-            <Card className="lg:col-span-2">
-              <CardHeader className="flex flex-row items-center justify-between">
-                <div>
-                  <CardTitle>Review Activity</CardTitle>
-                  <CardDescription>High-level stream of recent updates</CardDescription>
-                </div>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="sm" className="justify-start">
-                      Filter activity
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-48">
-                    <DropdownMenuLabel>Show updates for</DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem>All projects</DropdownMenuItem>
-                    <DropdownMenuItem>Assigned to me</DropdownMenuItem>
-                    <DropdownMenuItem>Flagged items</DropdownMenuItem>
-                    <DropdownMenuItem>Archived</DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </CardHeader>
-              <CardContent className="space-y-4 text-sm">
-                <div>
-                  <p className="font-medium">Lobby renovation package</p>
-                  <p className="text-muted-foreground">Placeholder note describing recent markups and requested revisions.</p>
-                </div>
-                <Separator />
-                <div>
-                  <p className="font-medium">Mechanical coordination</p>
-                  <p className="text-muted-foreground">Placeholder summary showing collaboration comments from engineers.</p>
-                </div>
-                <Separator />
-                <div>
-                  <p className="font-medium">Client handoff</p>
-                  <p className="text-muted-foreground">Placeholder reminder for shared punch list and export actions.</p>
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle>Quick Actions</CardTitle>
-                <CardDescription>Use the dropdowns below to imagine workflow steps</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <CreateProjectWizard />
-                <CreateReviewWizard />
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button className="w-full justify-between" variant="outline">
-                      Share with team
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent className="w-56">
-                    <DropdownMenuItem>Invite engineer</DropdownMenuItem>
-                    <DropdownMenuItem>Invite contractor</DropdownMenuItem>
-                    <DropdownMenuItem>Generate guest link</DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button className="w-full justify-between" variant="outline">
-                      Export package
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent className="w-56">
-                    <DropdownMenuItem>Download PDF</DropdownMenuItem>
-                    <DropdownMenuItem>Send to BIM 360</DropdownMenuItem>
-                    <DropdownMenuItem>Email summary</DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </CardContent>
-            </Card>
+          <section id="project-tracker" className="rounded-lg border bg-card p-6">
+            <div className="mb-4 space-y-1">
+              <h2 className="text-xl font-semibold">Project Tracker</h2>
+              <p className="text-muted-foreground text-sm">
+                Manage your projects with detailed metrics and coordinate upcoming reviews.
+              </p>
+            </div>
+            <ProjectsDataTable data={projectSummaries} />
           </section>
-          <section className="rounded-lg border bg-card p-6">
+
+          <Separator />
+
+          <section id="review-tracker" className="rounded-lg border bg-card p-6">
             <div className="mb-4 space-y-1">
               <h2 className="text-xl font-semibold">Review Tracker</h2>
               <p className="text-muted-foreground text-sm">

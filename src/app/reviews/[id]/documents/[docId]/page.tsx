@@ -16,8 +16,9 @@ type ReviewDocumentPageProps = {
 
 export default async function ReviewDocumentPage({ params, searchParams }: ReviewDocumentPageProps) {
   const { id, docId } = await params
-  const { page } = await searchParams
+  const { page, annotationId } = await searchParams
   const initialPage = typeof page === "string" ? parseInt(page, 10) : undefined
+  const initialAnnotationId = typeof annotationId === "string" ? annotationId : undefined
 
   const [review, document, initialAnnotations, childDocuments] = await Promise.all([
     getReviewDetailById(id),
@@ -77,6 +78,7 @@ export default async function ReviewDocumentPage({ params, searchParams }: Revie
             childDocuments={childDocuments}
             initialAnnotations={initialAnnotations}
             initialPage={initialPage}
+            initialAnnotationId={initialAnnotationId}
           />
         )}
       </section>

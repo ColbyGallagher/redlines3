@@ -167,9 +167,23 @@ const recentReviewTemplates: RecentReviewTemplate[] = [
   },
 ]
 
-export function CreateReviewWizard() {
+export type CreateReviewWizardProps = {
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  showTrigger?: boolean
+}
+
+export function CreateReviewWizard({
+  open: propOpen,
+  onOpenChange: propOnOpenChange,
+  showTrigger = true,
+}: CreateReviewWizardProps) {
   const router = useRouter()
-  const [open, setOpen] = React.useState(false)
+  const [internalOpen, setInternalOpen] = React.useState(false)
+
+  const open = propOpen !== undefined ? propOpen : internalOpen
+  const setOpen = propOnOpenChange !== undefined ? propOnOpenChange : setInternalOpen
+
   const [step, setStep] = React.useState<1 | 2>(1)
   const [formState, setFormState] = React.useState<ReviewFormState>(
     () => createInitialFormState()
@@ -493,11 +507,13 @@ export function CreateReviewWizard() {
 
   return (
     <Sheet open={open} onOpenChange={handleOpenChange}>
-      <SheetTrigger asChild>
-        <Button className="w-full justify-between" size="lg" variant="secondary">
-          Create new review
-        </Button>
-      </SheetTrigger>
+      {showTrigger && (
+        <SheetTrigger asChild>
+          <Button className="w-full justify-between" size="lg" variant="secondary">
+            Create new review
+          </Button>
+        </SheetTrigger>
+      )}
       <SheetContent side="right" className="sm:max-w-xl">
         <SheetHeader className="border-b pb-4">
           <div className="flex items-center justify-between">

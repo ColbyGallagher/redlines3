@@ -154,7 +154,7 @@ export function ProjectReviewsList({ summary, isAdmin }: ProjectReviewsListProps
           else if (key === "notStarted") val = String(review.reviewerStats.notStarted)
           else if (key === "issues") val = String(review.issueCount)
           else if (key === "documents") val = String(review.documentCount)
-          else if (key === "phase") val = summary.settings.states.find(p => p.id === review.phaseId)?.name || review.specificStatus || "In Progress"
+          else if (key === "phase") val = summary.settings.phases.find(p => p.id === review.phaseId)?.phase_name || review.specificStatus || "In Progress"
           else if (key === "overdue") val = review.isOverdue ? "Overdue" : review.isUpcoming ? "Upcoming" : "On Track"
           else val = String((review as any)[key] || "")
           
@@ -181,8 +181,8 @@ export function ProjectReviewsList({ summary, isAdmin }: ProjectReviewsListProps
           valA = a.documentCount
           valB = b.documentCount
         } else if (key === "phase") {
-          valA = summary.settings.states.find(p => p.id === a.phaseId)?.name || a.specificStatus || "In Progress"
-          valB = summary.settings.states.find(p => p.id === b.phaseId)?.name || b.specificStatus || "In Progress"
+          valA = summary.settings.phases.find(p => p.id === a.phaseId)?.phase_name || a.specificStatus || "In Progress"
+          valB = summary.settings.phases.find(p => p.id === b.phaseId)?.phase_name || b.specificStatus || "In Progress"
         } else if (key === "overdue") {
           valA = a.isOverdue ? 2 : a.isUpcoming ? 1 : 0
           valB = b.isOverdue ? 2 : b.isUpcoming ? 1 : 0
@@ -535,10 +535,10 @@ export function ProjectReviewsList({ summary, isAdmin }: ProjectReviewsListProps
                                       <SelectValue placeholder="Status" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                      {summary.settings.states && summary.settings.states.length > 0 ? (
-                                        summary.settings.states.map((phase) => (
+                                      {summary.settings.phases && summary.settings.phases.length > 0 ? (
+                                        summary.settings.phases.map((phase) => (
                                           <SelectItem key={phase.id} value={phase.id}>
-                                            {phase.name}
+                                            {phase.phase_name}
                                           </SelectItem>
                                         ))
                                       ) : (
@@ -554,7 +554,7 @@ export function ProjectReviewsList({ summary, isAdmin }: ProjectReviewsListProps
                                   </Select>
                                 ) : (
                                   <span className="text-[10px] text-muted-foreground px-2">
-                                    {summary.settings.states.find(p => p.id === review.phaseId)?.name || review.specificStatus || "In Progress"}
+                                    {summary.settings.phases.find(p => p.id === review.phaseId)?.phase_name || review.specificStatus || "In Progress"}
                                   </span>
                                 )}
                               </TableCell>
@@ -657,7 +657,7 @@ export function ProjectReviewsList({ summary, isAdmin }: ProjectReviewsListProps
           ) : view === 'kanban' ? (
             <KanbanBoard 
               reviews={filteredAndSortedReviews} 
-              phases={summary.settings.states || []}
+              phases={summary.settings.phases || []}
               projectId={summary.project.id}
               isAdmin={isAdmin}
               isPending={isPending}
@@ -705,7 +705,7 @@ function KanbanBoard({
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
 
   const columns = phases.length > 0 
-    ? phases.map(p => ({ id: p.id, name: p.name }))
+    ? phases.map(p => ({ id: p.id, name: p.phase_name || (p as any).name }))
     : [
         { id: "In Progress", name: "In Progress" },
         { id: "Awaiting Design Review", name: "Awaiting Design Review" },

@@ -1,7 +1,6 @@
 "use client"
 
-import { useState, useTransition } from "react"
-import { createReferenceDocument } from "@/lib/actions/reference-documents"
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -14,9 +13,9 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Upload, Loader2 } from "lucide-react"
+import { Upload } from "lucide-react"
 import { toast } from "sonner"
-import { supabase } from "@/lib/supabase/client"
+import { useBackgroundUpload } from "@/components/providers/upload-provider"
 
 interface UploadReferenceDialogProps {
   projectId: string
@@ -25,55 +24,17 @@ interface UploadReferenceDialogProps {
 export function UploadReferenceDialog({ projectId }: UploadReferenceDialogProps) {
   const [open, setOpen] = useState(false)
   const [file, setFile] = useState<File | null>(null)
-  const [isPending, startTransition] = useTransition()
+  const { startReferenceUpload } = useBackgroundUpload()
 
-  const handleUpload = async () => {
+  const handleUpload = () => {
     if (!file) {
       toast.error("Please select a file to upload.")
       return
     }
 
-    startTransition(async () => {
-      try {
-        // 1. Upload to Storage via client SDK (bypasses Server Action limits)
-        const fileId = crypto.randomUUID()
-        const storagePath = `${projectId}/${fileId}-${file.name}`
-        
-        const { error: storageError } = await supabase.storage
-          .from("project-references")
-          .upload(storagePath, file, {
-            contentType: file.type,
-            upsert: false
-          })
-
-        if (storageError) {
-          console.error("Storage upload failed:", storageError)
-          toast.error(`Upload failed: ${storageError.message}`)
-          return
-        }
-
-        // 2. Record metadata via Server Action
-        const result = await createReferenceDocument(projectId, {
-          fileName: file.name,
-          fileSize: file.size,
-          contentType: file.type,
-          storagePath: storagePath
-        })
-
-        if (result.success) {
-          toast.success("Document uploaded successfully.")
-          setOpen(false)
-          setFile(null)
-        } else {
-          // Cleanup storage if DB record fails
-          await supabase.storage.from("project-references").remove([storagePath])
-          toast.error(result.message)
-        }
-      } catch (error) {
-        console.error("Unexpected error in handleUpload:", error)
-        toast.error("An unexpected error occurred during upload.")
-      }
-    })
+    startReferenceUpload(file, projectId)
+    setOpen(false)
+    setFile(null)
   }
 
   return (
@@ -98,7 +59,6 @@ export function UploadReferenceDialog({ projectId }: UploadReferenceDialogProps)
               id="file"
               type="file"
               onChange={(e) => setFile(e.target.files?.[0] || null)}
-              disabled={isPending}
             />
           </div>
         </div>
@@ -106,19 +66,11 @@ export function UploadReferenceDialog({ projectId }: UploadReferenceDialogProps)
           <Button
             variant="outline"
             onClick={() => setOpen(false)}
-            disabled={isPending}
           >
             Cancel
           </Button>
-          <Button onClick={handleUpload} disabled={!file || isPending}>
-            {isPending ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Uploading...
-              </>
-            ) : (
-              "Upload"
-            )}
+          <Button onClick={handleUpload} disabled={!file}>
+            Upload
           </Button>
         </DialogFooter>
       </DialogContent>

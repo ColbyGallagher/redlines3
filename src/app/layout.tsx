@@ -4,6 +4,7 @@ import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider"
 import { AppShell } from "@/components/app-shell"
 import { Toaster } from "@/components/ui/sonner"
+import { UploadProvider } from "@/components/providers/upload-provider"
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -39,11 +40,13 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <AppShell>
-            <div id="annotation-popovers" className="fixed left-0 top-0 z-[9999]" />
-            {children}
-            <Toaster />
-          </AppShell>
+          <UploadProvider>
+            <AppShell>
+              <div id="annotation-popovers" className="fixed left-0 top-0 z-[9999]" />
+              {children}
+            </AppShell>
+          </UploadProvider>
+          <Toaster />
         </ThemeProvider>
       </body>
     </html>

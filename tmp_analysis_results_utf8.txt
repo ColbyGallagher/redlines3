@@ -1,0 +1,169 @@
+Performance Score: 38
+
+Top Performance Issues (Score < 100):
+
+[largest-contentful-paint] Largest Contentful Paint
+Score: 0
+Value: 53.0 s
+Desc: Largest Contentful Paint marks the time at which the largest text or image is painted.
+
+[total-blocking-time] Total Blocking Time
+Score: 0
+Value: 2,260 ms
+Desc: Sum of all time periods between FCP and Time to Interactive, when task length exceeded 50ms, expressed in milliseconds.
+
+[server-response-time] Reduce initial server response time
+Score: 0
+Value: Root document took 750 ms
+Savings: 649ms
+Desc: Keep the server response time for the main document short because all other requests depend on it.
+Top items:
+  - http://localhost:3000/reviews/e7b9eb90-c8a8-4519-9956-297a22831287/documents/19c81c00-986e-4e78-91bb...
+
+[interactive] Time to Interactive
+Score: 0
+Value: 53.0 s
+Desc: Time to Interactive is the amount of time it takes for the page to become fully interactive.
+
+[mainthread-work-breakdown] Minimize main-thread work
+Score: 0
+Value: 9.1 s
+Desc: Consider reducing the time spent parsing, compiling and executing JS. You may find delivering smaller JS payloads helps with this.
+Top items:
+  - {"group":"scriptEvaluation","groupLabel":"Script Evaluation","duration":4568.86500000064}
+  - {"group":"other","groupLabel":"Other","duration":2231.154999998361}
+  - {"group":"styleLayout","groupLabel":"Style & Layout","duration":1253.3960000000004}
+  - {"group":"scriptParseCompile","groupLabel":"Script Parsing & Compilation","duration":520.67999999999
+  - {"group":"garbageCollection","groupLabel":"Garbage Collection","duration":272.2460000000007}
+
+[bootup-time] Reduce JavaScript execution time
+Score: 0
+Value: 4.7 s
+Desc: Consider reducing the time spent parsing, compiling, and executing JS. You may find delivering smaller JS payloads helps with this.
+Top items:
+  - http://localhost:3000/_next/static/chunks/node_modules_%40syncfusion_ej2-pdfviewer_src_pdfviewer_bas...
+  - Unattributable
+  - http://localhost:3000/_next/static/chunks/node_modules_next_dist_compiled_5150ccfd._.js
+  - http://localhost:3000/reviews/e7b9eb90-c8a8-4519-9956-297a22831287/documents/19c81c00-986e-4e78-91bb...
+  - chrome-extension://emalgedpdlghbkikiaeocoblajamonoh/js/inject.bundle.js
+
+[unminified-javascript] Minify JavaScript
+Score: 0
+Value: Est savings of 1,245 KiB
+Savings: 970ms 1245KB
+Desc: Minifying JavaScript files can reduce payload sizes and script parse time.
+Top items:
+  - http://localhost:3000/_next/static/chunks/node_modules_next_dist_compiled_next-devtools_index_a9cb07...
+  - chrome-extension://aipbahhkojbhioodfbfmnobjnkagpnfg/js/jquery.js
+  - http://localhost:3000/_next/static/chunks/node_modules_next_dist_compiled_react-dom_1e674e59._.js
+  - http://localhost:3000/_next/static/chunks/node_modules_%40syncfusion_ej2-pdf_src_pdf_core_annotation...
+  - http://localhost:3000/_next/static/chunks/node_modules_html2canvas-pro_dist_html2canvas-pro_esm_b15a...
+
+[unused-css-rules] Reduce unused CSS
+Score: 0
+Value: Est savings of 271 KiB
+Savings: 240ms 271KB
+Desc: Reduce unused rules from stylesheets and defer CSS not used for above-the-fold content to decrease bytes consumed by network activity.
+Top items:
+  - http://localhost:3000/_next/static/chunks/src_components_pdf_syncfusion-pdf-viewer_c884f6e5.css
+
+[unused-javascript] Reduce unused JavaScript
+Score: 0
+Value: Est savings of 4,189 KiB
+Savings: 2890ms 4189KB
+Desc: Reduce unused JavaScript and defer loading scripts until they are required to decrease bytes consumed by network activity.
+Top items:
+  - http://localhost:3000/_next/static/chunks/73d1e_src_pdf-data-extract_core_text-extraction_font-utils...
+  - chrome-extension://emalgedpdlghbkikiaeocoblajamonoh/js/inject.bundle.js
+  - http://localhost:3000/_next/static/chunks/node_modules_next_dist_compiled_next-devtools_index_a9cb07...
+  - chrome-extension://gighmmpiobklfepjocnamgkkbiglidom/vendor/@eyeo/webext-ad-filtering-solution/conten...
+  - http://localhost:3000/_next/static/chunks/node_modules_%40syncfusion_ej2-navigations_src_19003c6c._....
+
+[bf-cache] Page prevented back/forward cache restoration
+Score: 0
+Value: 6 failure reasons
+Desc: Many navigations are performed by going back to a previous page, or forwards again. The back/forward cache (bfcache) can speed up these return navigations.
+Top items:
+  - {"reason":"The page has an unload handler in the main frame.","failureType":"Actionable","subItems":
+  - {"reason":"Pages with cache-control:no-store header cannot enter back/forward cache.","failureType":
+  - {"reason":"Pages with WebSocket cannot enter back/forward cache.","failureType":"Pending browser sup
+  - {"reason":"Pages whose main resource has cache-control:no-store cannot enter back/forward cache.","f
+  - {"reason":"Back/forward cache is disabled because some JavaScript network request received resource 
+
+[document-latency-insight] Document request latency
+Score: 0
+Value: Est savings of 650 ms
+Desc: Your first network request is the most important. [Reduce its latency](https://developer.chrome.com/docs/performance/insights/document-latency) by avoiding redirects, ensuring a fast server response, and enabling text compression.
+
+[forced-reflow-insight] Forced reflow
+Score: 0
+Value: N/A
+Desc: A forced reflow occurs when JavaScript queries geometric properties (such as `offsetWidth`) after styles have been invalidated by a change to the DOM state. This can result in poor performance. Learn more about [forced reflows](https://developer.chrome.com/docs/performance/insights/forced-reflow) and possible mitigations.
+Top items:
+  - {"type":"table","headings":[{"key":"source","valueType":"source-location","label":"Top function call
+  - {"type":"table","headings":[{"key":"source","valueType":"source-location","label":"Source"},{"key":"
+
+[lcp-breakdown-insight] LCP breakdown
+Score: 0
+Value: N/A
+Desc: Each [subpart has specific improvement strategies](https://developer.chrome.com/docs/performance/insights/lcp-breakdown). Ideally, most of the LCP time should be spent on loading the resources, not within delays.
+Top items:
+  - {"type":"table","headings":[{"key":"label","valueType":"text","label":"Subpart"},{"key":"duration","
+  - {"type":"node","lhId":"page-0-IMG","path":"1,HTML,1,BODY,2,DIV,1,MAIN,1,DIV,1,SECTION,0,DIV,0,DIV,1,
+
+[max-potential-fid] Max Potential First Input Delay
+Score: 3
+Value: 650 ms
+Desc: The maximum potential First Input Delay that your users could experience is the duration of the longest task.
+
+[speed-index] Speed Index
+Score: 29
+Value: 2.9 s
+Desc: Speed Index shows how quickly the contents of a page are visibly populated.
+
+[total-byte-weight] Avoid enormous network payloads
+Score: 50
+Value: Total size was 64,719 KiB
+Desc: Large network payloads cost users real money and are highly correlated with long load times.
+Top items:
+  - https://wwrkffqucdilxxfoclvk.supabase.co/storage/v1/object/sign/documents/e7b9eb90-c8a8-4519-9956-29...
+  - https://wwrkffqucdilxxfoclvk.supabase.co/storage/v1/object/sign/documents/e7b9eb90-c8a8-4519-9956-29...
+  - http://localhost:3000/ej2-pdfviewer-lib/pdfium.wasm
+  - http://localhost:3000/_next/static/chunks/73d1e_src_pdf-data-extract_core_text-extraction_font-utils...
+  - http://localhost:3000/redlines_logo.png
+
+[unminified-css] Minify CSS
+Score: 50
+Value: Est savings of 28 KiB
+Savings:  28KB
+Desc: Minifying CSS files can reduce network payload sizes.
+Top items:
+  - http://localhost:3000/_next/static/chunks/src_components_pdf_syncfusion-pdf-viewer_c884f6e5.css
+  - :host(.dark) {
+  --color-font: white;
+  --color-backdrop: rgba(0, 0, 0, 0.8);
+  --color-border-shad…
+  - :host {
+  /* 
+  * Although the style applied to the shadow host is isolated,
+  * the element that a…
+  - :host {
+  all: initial;
+
+  /* the direction property is not reset by 'all' */
+  direction: ltr;
+} …
+
+[legacy-javascript-insight] Legacy JavaScript
+Score: 50
+Value: Est savings of 8 KiB
+Desc: Polyfills and transforms enable older browsers to use new JavaScript features. However, many aren't necessary for modern browsers. Consider modifying your JavaScript build process to not transpile [Baseline](https://web.dev/articles/baseline-and-polyfills) features, unless you know you must support older browsers.
+Top items:
+  - http://localhost:3000/_next/static/chunks/node_modules_next_dist_b0daae9a._.js
+
+[cumulative-layout-shift] Cumulative Layout Shift
+Score: 99
+Value: 0.051
+Desc: Cumulative Layout Shift measures the movement of visible elements within the viewport.
+Top items:
+  - {"cumulativeLayoutShiftMainFrame":0.051118,"newEngineResult":{"cumulativeLayoutShift":0.051118,"cumu

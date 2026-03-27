@@ -98,7 +98,7 @@ export function ReviewDetailsView({ review, isAdmin, availableMilestones = [] }:
   const [isPending, startTransition] = useTransition()
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [pendingUpdate, setPendingUpdate] = useState<{
-    field: "status" | "specificStatus" | "phaseId" | "milestone" | "dueDate";
+    field: "status" | "specificStatus" | "phaseId" | "milestone" | "dueDate" | "state";
     value: string;
   } | null>(null)
   
@@ -199,7 +199,7 @@ export function ReviewDetailsView({ review, isAdmin, availableMilestones = [] }:
     setDragOverColumn(null)
   }
 
-  const handleUpdate = (field: "status" | "specificStatus" | "phaseId" | "milestone" | "dueDate", value: string, skipConfirm = false) => {
+  const handleUpdate = (field: "status" | "specificStatus" | "phaseId" | "milestone" | "dueDate" | "state", value: string, skipConfirm = false) => {
     if (skipConfirm) {
       executeLifecycleUpdate(field, value)
     } else {
@@ -208,7 +208,7 @@ export function ReviewDetailsView({ review, isAdmin, availableMilestones = [] }:
     }
   }
 
-  const executeLifecycleUpdate = (field: "status" | "specificStatus" | "phaseId" | "milestone" | "dueDate", value: string) => {
+  const executeLifecycleUpdate = (field: "status" | "specificStatus" | "phaseId" | "milestone" | "dueDate" | "state", value: string) => {
     startTransition(async () => {
       const payload: any = { [field]: value }
       const result = await updateReviewLifecycle(review.id, review.project.id, payload)
@@ -686,7 +686,7 @@ export function ReviewDetailsView({ review, isAdmin, availableMilestones = [] }:
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
-              <Link href="/dashboard">Dashboard</Link>
+              <Link href="/dashboard">Home</Link>
             </BreadcrumbLink>
           </BreadcrumbItem>
           <BreadcrumbSeparator />
@@ -838,13 +838,13 @@ export function ReviewDetailsView({ review, isAdmin, availableMilestones = [] }:
                     <SelectValue placeholder="Select milestone" />
                   </SelectTrigger>
                   <SelectContent>
-                    {!availableMilestones.includes(review.milestone) && review.milestone !== "Unspecified" && (
+                    {review.milestone && !availableMilestones.includes(review.milestone) && review.milestone !== "Unspecified" && (
                       <SelectItem key={review.milestone} value={review.milestone}>{review.milestone}</SelectItem>
                     )}
-                    {review.milestone === "Unspecified" && !availableMilestones.includes("Unspecified") && (
+                    {(!review.milestone || review.milestone === "Unspecified") && !availableMilestones.includes("Unspecified") && (
                       <SelectItem value="Unspecified">Unspecified</SelectItem>
                     )}
-                    {availableMilestones.map((m) => (
+                    {availableMilestones.filter(Boolean).map((m) => (
                       <SelectItem key={m} value={m}>{m}</SelectItem>
                     ))}
                   </SelectContent>

@@ -123,6 +123,7 @@ export type Issue = {
   ifc_element_id: string | null
   status: string | null
   status_old?: string | null
+  snapshot_path?: string | null
   age_days?: number | null
   is_high_priority?: boolean | null
   is_long_open?: boolean | null

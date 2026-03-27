@@ -101,6 +101,7 @@ issues [icon: alert-circle, color: red]{
   page_number int
   ifc_element_id string
   status string
+  snapshot_path string
 }
 
 // relationships

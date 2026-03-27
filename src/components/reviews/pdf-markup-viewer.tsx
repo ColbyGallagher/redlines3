@@ -1,6 +1,6 @@
 "use client"
 
-import { FormEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import React, { FormEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { Loader2, AlertCircle, PanelLeft, ListChecks, Filter, Search, User, ChevronDown, Trash2 } from "lucide-react"
 import { toast } from "sonner"
@@ -10,6 +10,8 @@ import { SyncfusionPdfViewer, SyncfusionPdfViewerHandle } from "@/components/pdf
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { AnnotationEvent, RealtimeAnnotation, useAnnotationsChannel } from "@/lib/annotations"
+import { captureAnnotationSnapshot } from "@/lib/utils/dom-capture"
+import { uploadIssueSnapshot } from "@/lib/actions/issues"
 import type { ReviewDocument } from "@/lib/data/reviews"
 import {
   Dialog,
@@ -53,6 +55,7 @@ type PDFMarkupViewerProps = {
   childDocuments?: ReviewDocument[]
   initialAnnotations?: RealtimeAnnotation[]
   initialPage?: number
+  initialAnnotationId?: string
 }
 
 const COLORS = ["#E11D48", "#4338CA", "#047857", "#F59E0B"]
@@ -79,7 +82,7 @@ type IssueDetails = {
   dateModified: string | null
 }
 
-export function PDFMarkupViewer({ reviewId, document, childDocuments = [], initialAnnotations, initialPage }: PDFMarkupViewerProps) {
+export function PDFMarkupViewer({ reviewId, document, childDocuments = [], initialAnnotations, initialPage, initialAnnotationId }: PDFMarkupViewerProps) {
   const [numPages, setNumPages] = useState(0)
   const [annotations, setAnnotations] = useState<RealtimeAnnotation[]>([])
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null)
@@ -117,24 +120,24 @@ export function PDFMarkupViewer({ reviewId, document, childDocuments = [], initi
   const [filterStatus, setFilterStatus] = useState("all")
 
   const availableImportances = useMemo(() => {
-    const custom = projectSettings?.importances?.filter(i => i.id)
+    const custom = projectSettings?.importances?.filter(i => i?.id)
     return custom?.length ? custom : DEFAULT_IMPORTANCES.map(name => ({ id: name, name }))
   }, [projectSettings])
 
   const availableDisciplines = useMemo(() => {
-    const custom = projectSettings?.disciplines?.filter(d => d.id)
+    const custom = projectSettings?.disciplines?.filter(d => d?.id)
     return custom?.length ? custom : DEFAULT_DISCIPLINES.map(name => ({ id: name, name }))
   }, [projectSettings])
   const availableStatuses = useMemo(() =>
-    projectSettings?.statuses?.filter(s => s.id) ?? [],
+    projectSettings?.statuses?.filter(s => s?.id) ?? [],
     [projectSettings]
   )
   const availableStates = useMemo(() =>
-    projectSettings?.states?.filter(s => s.id) ?? [],
+    projectSettings?.states?.filter(s => s?.id) ?? [],
     [projectSettings]
   )
   const availableMilestones = useMemo(() =>
-    projectSettings?.availableMilestones?.filter(m => m.name) ?? [],
+    projectSettings?.availableMilestones?.filter(m => m?.name) ?? [],
     [projectSettings]
   )
 
@@ -258,7 +261,8 @@ export function PDFMarkupViewer({ reviewId, document, childDocuments = [], initi
 
   // Filtering Logic
   const filteredAnnotations = useMemo(() => {
-    return annotations
+    return (annotations || [])
+      .filter(ann => ann && typeof ann === 'object')
       .map((ann) => {
         const issue = documentIssues.find((i) => i.id === ann.issueId)
         return {
@@ -299,8 +303,12 @@ export function PDFMarkupViewer({ reviewId, document, childDocuments = [], initi
   }, [])
 
   // Navigation handled by Syncfusion
+  const hasJumpedToInitialPage = useRef(false)
   useEffect(() => {
-    if (initialPage && numPages >= initialPage && viewerRef.current) {
+    console.log("[PDFMarkupViewer] -> Checking initialPage jump effect. hasJumped:", hasJumpedToInitialPage.current, "initialPage:", initialPage, "numPages:", numPages)
+    if (!hasJumpedToInitialPage.current && initialPage && numPages >= initialPage && viewerRef.current) {
+      console.log("[PDFMarkupViewer] -> Jumping to initialPage:", initialPage)
+      hasJumpedToInitialPage.current = true
       viewerRef.current.goToPage(initialPage)
     }
   }, [initialPage, numPages])
@@ -349,7 +357,7 @@ export function PDFMarkupViewer({ reviewId, document, childDocuments = [], initi
 
 
   const selectedAnnotation = useMemo(
-    () => annotations.find((annotation) => annotation.id === selectedAnnotationId),
+    () => annotations.find((annotation) => annotation?.id === selectedAnnotationId),
     [annotations, selectedAnnotationId]
   )
 
@@ -401,8 +409,31 @@ export function PDFMarkupViewer({ reviewId, document, childDocuments = [], initi
     if (viewerRef.current) {
       viewerRef.current.goToPage(annotation.page)
       setSelectedAnnotationId(annotation.id)
+      // Highlight the annotation in the Syncfusion viewer ONLY if it's a native syncfusion annotation.
+      // Calling this on a custom annotation will crash the viewer on mouse move.
+      if (annotation.type === "syncfusion") {
+        viewerRef.current.selectAnnotation(annotation.id)
+      }
     }
   }, [])
+
+  // Auto-jump to initial annotation
+  const hasJumpedToInitialAnnotation = useRef(false)
+  useEffect(() => {
+    console.log("[PDFMarkupViewer] -> Checking initialAnnotation jump effect. hasJumped:", hasJumpedToInitialAnnotation.current, "initialAnnotationId:", initialAnnotationId, "numPages:", numPages)
+    if (!hasJumpedToInitialAnnotation.current && initialAnnotationId && annotations.length > 0 && viewerRef.current && numPages > 0) {
+      const ann = annotations.find(a => a.issueId === initialAnnotationId || a.id === initialAnnotationId)
+      if (ann) {
+        console.log("[PDFMarkupViewer] -> Found initial annotation! Jumping to page:", ann.page)
+        hasJumpedToInitialAnnotation.current = true
+        // Delay slightly to ensure PDF viewer interior is ready for navigation
+        const timer = setTimeout(() => {
+          jumpToAnnotation(ann)
+        }, 1000)
+        return () => clearTimeout(timer)
+      }
+    }
+  }, [initialAnnotationId, annotations, numPages, jumpToAnnotation])
 
   const resetConvertForm = useCallback(() => {
     setDiscipline("")
@@ -531,6 +562,47 @@ export function PDFMarkupViewer({ reviewId, document, childDocuments = [], initi
           channel?.broadcastEvent({
             type: "UPDATE",
             annotation: { ...baseAnnotation, issueId: payload.issue.id, content: finalComment }
+          })
+        }
+
+        // --- NEW SNAPSHOT LOGIC ---
+        const pageNum = placementCoords ? placementCoords.page : selectedAnnotation!.page
+        const patterns = [
+          `syncfusion-pdf-viewer_pageContainer_${pageNum - 1}`,
+          `syncfusion-pdf-viewer_pageDiv_${pageNum - 1}`,
+          `syncfusion-pdf-viewer_pageView_${pageNum - 1}`
+        ]
+        let pageElement: HTMLElement | null = null
+        for (const pattern of patterns) {
+          const el = window.document.getElementById(pattern)
+          if (el) {
+            pageElement = el
+            break
+          }
+        }
+
+        if (pageElement) {
+          // Calculate bounding box using page dimensions
+          const rect = pageElement.getBoundingClientRect()
+          const xPx = (baseAnnotation?.x || 0) * rect.width / 100
+          const yPx = (baseAnnotation?.y || 0) * rect.height / 100
+          
+          const boxWidth = 400
+          const boxHeight = 250
+          const boundingBox = {
+            x: xPx - boxWidth / 2,
+            y: yPx - boxHeight / 2,
+            width: boxWidth,
+            height: boxHeight
+          }
+
+          captureAnnotationSnapshot(pageElement, boundingBox).then((blob) => {
+            if (blob) {
+              const formData = new FormData()
+              formData.append("file", blob, "snapshot.jpg")
+              uploadIssueSnapshot(payload.issue.id, document.projectId, reviewId, formData)
+                .catch(err => console.error("Snapshot upload error:", err))
+            }
           })
         }
       }
@@ -746,12 +818,22 @@ export function PDFMarkupViewer({ reviewId, document, childDocuments = [], initi
             ) : filteredAnnotations.length > 0 ? (
               <Accordion type="single" collapsible className="w-full" value={selectedAnnotationId || undefined} onValueChange={(val: string) => val && setSelectedAnnotationId(val)}>
                 {filteredAnnotations.map((ann) => (
-                  <AccordionItem key={ann.id} value={ann.id} className="border-b px-0 transition-colors hover:bg-muted/30 data-[state=open]:bg-muted/50">
-                    <div className="flex items-start px-3 py-2 group">
-                      <div className="mt-1 mr-3 flex-shrink-0">
+                  <AccordionItem 
+                    key={ann.id} 
+                    value={ann.id} 
+                    className={cn(
+                      "border-b px-0 transition-all duration-200 hover:bg-muted/30 relative",
+                      selectedAnnotationId === ann.id ? "bg-primary/5 border-l-4 border-primary" : "border-l-4 border-transparent"
+                    )}
+                  >
+                    <div 
+                      className="flex items-start px-3 py-3 group cursor-pointer" 
+                      onClick={() => jumpToAnnotation(ann)}
+                    >
+                      <div className="mt-0.5 mr-3 flex-shrink-0">
                         <Avatar className="h-7 w-7 border-2 border-background shadow-sm ring-1 ring-muted">
                           <AvatarFallback className="text-[10px] font-bold bg-primary/10 text-primary uppercase">
-                            {ann.createdBy.split(' ').map(n => n[0]).join('')}
+                            {ann.createdBy?.split(' ').map(n => n[0]).join('') || '?'}
                           </AvatarFallback>
                         </Avatar>
                       </div>
@@ -776,11 +858,14 @@ export function PDFMarkupViewer({ reviewId, document, childDocuments = [], initi
                             </Badge>
                           </div>
                         </div>
-                        <p className="text-[11px] text-muted-foreground line-clamp-1 italic">
-                          "{ann.content.length > 40 ? ann.content.substring(0, 40) + "..." : ann.content}"
+                        <p className={cn(
+                          "text-[11px] line-clamp-2 italic leading-relaxed",
+                          selectedAnnotationId === ann.id ? "text-foreground font-medium" : "text-muted-foreground"
+                        )}>
+                          "{ann.content}"
                         </p>
                       </div>
-                      <AccordionTrigger className="p-1 hover:no-underline opacity-0 group-hover:opacity-100 transition-opacity" />
+                      <AccordionTrigger className="p-1 hover:no-underline opacity-60 group-hover:opacity-100 transition-opacity" />
                     </div>
                     <AccordionContent className="px-4 pb-4 pt-1 border-t border-muted/30 bg-background/40">
                       <div className="space-y-4 text-xs mt-2">
@@ -894,6 +979,7 @@ export function PDFMarkupViewer({ reviewId, document, childDocuments = [], initi
               onAddAnnotation={handleAddAnnotation}
               onDeleteAnnotation={handleDeleteAnnotation}
               onSelectAnnotation={setSelectedAnnotationId}
+              selectedAnnotationId={selectedAnnotationId}
             />
           ))}
         </div>
@@ -1081,13 +1167,14 @@ export function PDFMarkupViewer({ reviewId, document, childDocuments = [], initi
  * and Syncfusion's virtualized DOM. It finds the Syncfusion page element in the DOM
  * and portals our AnnotationLayer into it.
  */
-function SyncfusionPageOverlay({
+const SyncfusionPageOverlay = React.memo(function SyncfusionPageOverlay({
   pageNumber,
   annotations,
   activeTool,
   onAddAnnotation,
   onDeleteAnnotation,
   onSelectAnnotation,
+  selectedAnnotationId,
 }: {
   pageNumber: number
   annotations: RealtimeAnnotation[]
@@ -1095,6 +1182,7 @@ function SyncfusionPageOverlay({
   onAddAnnotation: (event: React.MouseEvent<HTMLDivElement>, page: number) => void
   onDeleteAnnotation: (id: string) => void
   onSelectAnnotation: (id: string | null) => void
+  selectedAnnotationId: string | null
 }) {
   const [targetElement, setTargetElement] = useState<HTMLElement | null>(null)
 
@@ -1121,7 +1209,7 @@ function SyncfusionPageOverlay({
       }
     }
 
-    const interval = setInterval(checkElement, 2000)
+    const interval = setInterval(checkElement, 300)
     checkElement()
 
     return () => clearInterval(interval)
@@ -1137,19 +1225,21 @@ function SyncfusionPageOverlay({
       onAddAnnotation={onAddAnnotation}
       onDeleteAnnotation={onDeleteAnnotation}
       onSelectAnnotation={onSelectAnnotation}
+      selectedAnnotationId={selectedAnnotationId}
     />,
     targetElement
   )
-}
+})
 
 
-function AnnotationLayer({
+const AnnotationLayer = React.memo(function AnnotationLayer({
   pageNumber,
   annotations,
   activeTool,
   onAddAnnotation,
   onDeleteAnnotation,
   onSelectAnnotation,
+  selectedAnnotationId,
 }: {
   pageNumber: number
   annotations: RealtimeAnnotation[]
@@ -1157,8 +1247,9 @@ function AnnotationLayer({
   onAddAnnotation: (event: React.MouseEvent<HTMLDivElement>, page: number) => void
   onDeleteAnnotation: (id: string) => void
   onSelectAnnotation: (id: string | null) => void
+  selectedAnnotationId: string | null
 }) {
-  const pageAnnotations = annotations.filter((annotation) => annotation.page === pageNumber)
+  const pageAnnotations = (annotations || []).filter((annotation) => annotation && annotation.page === pageNumber)
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 })
 
   const handleMouseMove = (event: React.MouseEvent<HTMLDivElement>) => {
@@ -1179,6 +1270,7 @@ function AnnotationLayer({
 
   return (
     <div
+      id={`annotation-layer-${pageNumber}`}
       className={cn(
         "absolute inset-0 z-[9999] bg-transparent",
         activeTool === "issue" ? "cursor-crosshair pointer-events-auto" : "pointer-events-none"
@@ -1201,20 +1293,23 @@ function AnnotationLayer({
         <AnnotationBadge
           key={annotation.id}
           annotation={annotation}
+          isSelected={selectedAnnotationId === annotation.id}
           onDelete={onDeleteAnnotation}
           onSelect={() => onSelectAnnotation(annotation.id)}
         />
       ))}
     </div>
   )
-}
+})
 
-function AnnotationBadge({
+const AnnotationBadge = React.memo(function AnnotationBadge({
   annotation,
+  isSelected,
   onDelete,
   onSelect,
 }: {
   annotation: RealtimeAnnotation
+  isSelected: boolean
   onDelete: (id: string) => void
   onSelect: () => void
 }) {
@@ -1223,7 +1318,8 @@ function AnnotationBadge({
 
   return (
     <div
-      className="absolute cursor-pointer pointer-events-auto z-[60]"
+      id={`annotation-badge-${annotation.id}`}
+      className="absolute cursor-pointer pointer-events-auto z-[60] group"
       style={{
         top: `${annotation.y}%`,
         left: `${annotation.x}%`,
@@ -1235,6 +1331,13 @@ function AnnotationBadge({
         setIsOpen((prev) => !prev)
       }}
     >
+      {/* Visual Highlight Ring */}
+      {isSelected && (
+        <div 
+          className="absolute inset-0 -m-3 rounded-full animate-pulse bg-primary/20 ring-4 ring-primary/40 pointer-events-none" 
+          style={{ animationDuration: '1.5s' }}
+        />
+      )}
       {(annotation.type === "text" || annotation.issueId) && (
         <div className="pointer-events-none absolute -top-4 left-1/2 -translate-x-1/2">
           <AlertCircle className="h-4 w-4 text-destructive drop-shadow-sm" />
@@ -1242,7 +1345,7 @@ function AnnotationBadge({
       )}
       {annotation.type === "text" ? (
         <div
-          className="whitespace-nowrap rounded-sm px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider shadow-md ring-1 ring-inset transition-all hover:scale-105"
+          className="pointer-events-none whitespace-nowrap rounded-sm px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider shadow-md ring-1 ring-inset transition-all group-hover:scale-105"
           style={{
             backgroundColor: `${annotation.color}15`, // ~8% opacity
             color: annotation.color,
@@ -1254,7 +1357,7 @@ function AnnotationBadge({
         </div>
       ) : (
         <span
-          className="inline-flex size-6 items-center justify-center rounded-full text-xs font-semibold text-white shadow-lg transition-all hover:scale-110"
+          className="pointer-events-none inline-flex size-6 items-center justify-center rounded-full text-xs font-semibold text-white shadow-lg transition-all group-hover:scale-110"
           style={{ backgroundColor: annotation.color }}
         >
           {annotation.createdBy.slice(0, 2).toUpperCase()}
@@ -1292,7 +1395,7 @@ function AnnotationBadge({
         : null}
     </div>
   )
-}
+})
 
 function renderLoading(container: HTMLDivElement | null) {
   if (!container) return "Loading..."

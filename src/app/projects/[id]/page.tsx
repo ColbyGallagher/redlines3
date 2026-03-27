@@ -20,6 +20,8 @@ import { getRoles } from "@/lib/actions/users"
 import { getReferenceDocuments } from "@/lib/actions/reference-documents"
 import { ReferenceDocumentsTable } from "@/components/projects/reference-documents-table"
 import { UploadReferenceDialog } from "@/components/projects/upload-reference-dialog"
+import { IssuesTimelineChart } from "@/components/projects/issues-timeline-chart"
+import { IssuesDisciplineChart } from "@/components/projects/issues-discipline-chart"
 
 type ProjectDashboardPageProps = {
   params: Promise<{
@@ -75,6 +77,65 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
     ? `Project “${summary.project.projectName}” created successfully.`
     : undefined
 
+  // 1. Timeline Aggregation
+  const events: { date: string; type: "open" | "closed" }[] = []
+  
+  summary.issues.forEach(issue => {
+    if (issue.dateCreated && issue.dateCreated !== "1970-01-01T00:00:00.000Z") {
+      events.push({
+        date: new Date(issue.dateCreated).toISOString().split("T")[0],
+        type: "open"
+      })
+    }
+    const isClosed = ["closed", "resolved"].includes(issue.status.toLowerCase())
+    if (isClosed && issue.dateModified && issue.dateModified !== "1970-01-01T00:00:00.000Z") {
+      events.push({
+        date: new Date(issue.dateModified).toISOString().split("T")[0],
+        type: "closed"
+      })
+    }
+  })
+
+  events.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+
+  let currentOpen = 0
+  let currentClosed = 0
+  const timelineMap = new Map<string, { open: number; closed: number }>()
+
+  events.forEach(event => {
+    if (event.type === "open") {
+      currentOpen++
+    } else if (event.type === "closed") {
+      currentOpen = Math.max(0, currentOpen - 1)
+      currentClosed++
+    }
+    timelineMap.set(event.date, { open: currentOpen, closed: currentClosed })
+  })
+
+  const timelineData = Array.from(timelineMap.entries()).map(([date, counts]) => ({
+    date,
+    open: counts.open,
+    closed: counts.closed
+  }))
+
+  // 2. Discipline Aggregation
+  const disciplineMap = new Map<string, number>()
+  summary.issues.forEach(issue => {
+    const disc = issue.discipline || "Unspecified"
+    disciplineMap.set(disc, (disciplineMap.get(disc) || 0) + 1)
+  })
+
+  const disciplineData = Array.from(disciplineMap.entries())
+    .sort((a, b) => b[1] - a[1])
+    .map(([discipline, count], index) => {
+      const chartColorIndex = (index % 5) + 1
+      return {
+        discipline,
+        count,
+        fill: `var(--chart-${chartColorIndex})`
+      }
+    })
+
   return (
     <div className="flex flex-1 flex-col">
       <ProjectSummaryHeader
@@ -93,6 +154,12 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
         <InsightCallouts insights={summary.insights} />
         <section className="flex flex-col gap-6">
           <ProjectReviewsList summary={summary} isAdmin={isAdmin} />
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <IssuesTimelineChart data={timelineData} />
+            <IssuesDisciplineChart data={disciplineData} />
+          </div>
+
           <IssuesTable issues={summary.issues} summary={summary} />
         </section>
 
