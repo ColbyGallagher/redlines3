@@ -20,11 +20,15 @@ type IssueRow = Database["public"]["Tables"]["issues"]["Row"]
 
 type ReviewWithRelations = ReviewRow & {
   documents: DocumentRow[] | null
-  issues: IssueRow[] | null
+  issues: (IssueRow & { author: { first_name: string | null; last_name: string | null } | null })[] | null
 }
 
 type ProjectUserRow = Database["public"]["Tables"]["project_users"]["Row"] & {
-  user: Database["public"]["Tables"]["users"]["Row"] | null
+  user: (Database["public"]["Tables"]["users"]["Row"] & {
+    user_companies: Array<Database["public"]["Tables"]["user_companies"]["Row"] & {
+      companies: Database["public"]["Tables"]["companies"]["Row"] | null
+    }> | null
+  }) | null
   roles: Database["public"]["Tables"]["roles"]["Row"] | null
 }
 
@@ -46,6 +50,7 @@ type ProjectWithRelations = ProjectRow & {
 
 type NormalizedReview = {
   id: string
+  slug: string
   reviewName: string
   reviewNumber: string
   milestone: string
@@ -58,6 +63,7 @@ type NormalizedReview = {
   phaseId?: string | null
   project: {
     id: string
+    slug: string
     projectNumber: string
     projectName: string
     projectLocation: string | null
@@ -97,6 +103,7 @@ type NormalizedIssue = {
   commentCoordinates?: string | null
   pageNumber?: number | null
   createdByUserId?: string | null
+  authorProfile?: { first_name: string | null; last_name: string | null } | null
   state?: string | null
   classification?: string | null
   milestone?: string | null
@@ -105,6 +112,8 @@ type NormalizedIssue = {
 
 export type ProjectReviewSummary = {
   id: string
+  slug: string
+  projectSlug: string
   reviewName: string
   milestone: string
   status: string
@@ -132,19 +141,26 @@ export type ProjectReviewSummary = {
 export type ProjectIssueSummary = {
   id: string
   issueNumber: string
+  projectSlug: string
+  projectName: string
   status: string
   importance: string
   discipline: string
   state: string | null
   classification: string | null
   milestone: string | null
+  package: string | null
+  comment: string | null
   authorName: string
+  createdByUserId: string
   dateCreated: string
   dateModified: string
   ageDays: number
   isHighPriority: boolean
   isLongOpen: boolean
   reviewId: string
+  reviewSlug: string
+  reviewName: string
   documentId: string | null
   pageNumber: number | null
   snapshotPath: string | null
@@ -192,6 +208,7 @@ export type ProjectSettings = {
   classifications: ProjectClassification[]
   defaultReviewTimes: { stage: string; days: number }[]
   defaultResponsePeriods: { role: string; days: number }[]
+  companies: string[]
 }
 
 type ProjectRowWithSettings = ProjectRow & {
@@ -201,6 +218,7 @@ type ProjectRowWithSettings = ProjectRow & {
 export type ProjectSummary = {
   project: {
     id: string
+    slug: string
     projectNumber: string
     projectName: string
     projectLocation: string | null
@@ -232,6 +250,7 @@ function mapReview(row: ReviewRow & {
 }, project: ProjectWithRelations): NormalizedReview {
   return {
     id: row.id,
+    slug: row.slug ?? row.id,
     reviewName: row.review_name,
     reviewNumber: row.review_number,
     milestone: row.milestone ?? "Unspecified",
@@ -244,6 +263,7 @@ function mapReview(row: ReviewRow & {
     phaseId: row.phase_id,
     project: {
       id: project.id,
+      slug: project.slug,
       projectNumber: project.project_number,
       projectName: project.project_name,
       projectLocation: project.project_location ?? null,
@@ -294,6 +314,7 @@ function mapReview(row: ReviewRow & {
         commentCoordinates: issue.comment_coordinates ?? null,
         pageNumber: issue.page_number ?? null,
         createdByUserId: issue.created_by_user_id ?? null,
+        authorProfile: (issue as any).author ?? null,
         state: stateObj?.name ?? issue.state ?? null,
         classification: (project.project_classifications ?? []).find(c => c.id === issue.classification)?.name ?? issue.classification ?? null,
         milestone: (project.project_milestones ?? []).find(m => m.id === issue.milestone)?.name ?? issue.milestone ?? null,
@@ -369,6 +390,8 @@ function calculateReviewSummaries(today: Date, reviews: NormalizedReview[], proj
 
     return {
       id: review.id,
+      slug: review.slug,
+      projectSlug: review.project.slug,
       reviewName: review.reviewName,
       milestone: review.milestone,
       status: (projectStatuses ?? []).find(s => s.id === review.status)?.name ?? review.status,
@@ -387,7 +410,8 @@ function calculateReviewSummaries(today: Date, reviews: NormalizedReview[], proj
   })
 }
 
-function calculateIssueSummaries(today: Date, reviews: NormalizedReview[]): ProjectIssueSummary[] {
+function calculateIssueSummaries(today: Date, reviews: NormalizedReview[], members: ReviewUser[]): ProjectIssueSummary[] {
+  const memberMap = new Map(members.map(m => [m.id, m]))
   return reviews.flatMap((review) => {
     return review.issues.map((issue) => {
       const createdAt = parseDate(issue.dateCreated)
@@ -398,8 +422,12 @@ function calculateIssueSummaries(today: Date, reviews: NormalizedReview[]): Proj
       const isHighPriority = importance.toLowerCase() === "high"
       const isLongOpen = isActive && ageDays >= LONG_OPEN_ISSUE_DAYS
 
-      const author = reviews.flatMap(r => r.reviewers).find(rev => rev.id === issue.createdByUserId)
-      const authorName = author ? `${author.firstName} ${author.lastName}` : "Unknown"
+      const author = memberMap.get(issue.createdByUserId || "")
+      let authorName = author ? `${author.firstName} ${author.lastName}` : "Unknown"
+
+      if (authorName === "Unknown" && issue.authorProfile) {
+        authorName = [issue.authorProfile.first_name, issue.authorProfile.last_name].filter(Boolean).join(" ") || "Unknown"
+      }
 
       return {
         id: issue.id,
@@ -410,13 +438,20 @@ function calculateIssueSummaries(today: Date, reviews: NormalizedReview[]): Proj
         state: issue.state ?? null,
         classification: issue.classification ?? null,
         milestone: issue.milestone ?? null,
+        package: (issue as any).package ?? null,
+        comment: issue.comment ?? null,
         authorName,
+        createdByUserId: issue.createdByUserId ?? "",
         dateCreated: (createdAt ?? new Date(0)).toISOString(),
         dateModified: (modifiedAt ?? createdAt ?? new Date(0)).toISOString(),
         ageDays,
         isHighPriority,
         isLongOpen,
         reviewId: issue.reviewId,
+        reviewSlug: review.slug,
+        reviewName: review.reviewName,
+        projectSlug: review.project.slug,
+        projectName: review.project.projectName,
         documentId: issue.documentId ?? null,
         pageNumber: issue.pageNumber ?? null,
         snapshotPath: issue.snapshotPath ?? null,
@@ -530,6 +565,7 @@ function deriveSettings(project: ProjectWithRelations): ProjectSettings {
     classifications: (project as any).project_classifications ?? [],
     defaultReviewTimes: (project.project_review_stages ?? []).map(s => ({ stage: s.stage_name, days: s.days })),
     defaultResponsePeriods: (project.project_response_roles ?? []).map(r => ({ role: r.role_name, days: r.days })),
+    companies: (project.settings as any)?.companies ?? [],
   }
 }
 
@@ -565,8 +601,12 @@ function mapProjectMembers(projectUsers: ProjectUserRow[] | null | undefined): R
     const firstName = formatName(user?.first_name)
     const lastName = formatName(user?.last_name)
 
+    // Find active company or fallback to first company
+    const userCompany = user?.user_companies?.find((uc: any) => uc.active) || user?.user_companies?.[0]
+    const companyName = userCompany?.companies?.name ?? "Independent"
+
     return {
-      id: user?.id ?? entry.id,
+      id: user?.id ?? entry.user_id,
       firstName,
       lastName,
       email: user?.email ?? "",
@@ -574,7 +614,7 @@ function mapProjectMembers(projectUsers: ProjectUserRow[] | null | undefined): R
       role: entry.roles?.name ?? entry.role ?? "Member",
       roleId: entry.role_id ?? undefined,
       avatarFallback: toTitleCaseFallback(firstName, lastName),
-      company: "ColbyGallagher",
+      company: companyName,
       status: "Active",
     }
   })
@@ -584,8 +624,9 @@ function mapProjectSummary(project: ProjectWithRelations): ProjectSummary {
   const reviews = (project.reviews ?? []).map((review) => mapReview(review, project))
   const today = new Date()
 
+  const members = mapProjectMembers(project.project_users)
   const reviewSummaries = calculateReviewSummaries(today, reviews, project.project_statuses ?? [])
-  const issueSummaries = calculateIssueSummaries(today, reviews)
+  const issueSummaries = calculateIssueSummaries(today, reviews, members)
   const metrics = calculateMetrics(reviewSummaries, issueSummaries)
   const insights = buildInsights(project.id, reviewSummaries, issueSummaries)
   const lastUpdated = computeLastUpdated(reviews, project.updated_at ?? project.created_at)
@@ -601,11 +642,13 @@ function mapProjectSummary(project: ProjectWithRelations): ProjectSummary {
     settings.documentNamingConvention = dbSettings.documentNamingConvention ?? settings.documentNamingConvention
     settings.documentCodeLocation = dbSettings.documentCodeLocation ?? settings.documentCodeLocation
     settings.titleblockTemplateUrl = dbSettings.titleblockTemplateUrl ?? settings.titleblockTemplateUrl
+    settings.companies = dbSettings.companies ?? []
   }
 
   return {
     project: {
       id: project.id,
+      slug: project.slug,
       projectNumber: project.project_number,
       projectName: project.project_name,
       projectLocation: project.project_location ?? null,
@@ -613,7 +656,7 @@ function mapProjectSummary(project: ProjectWithRelations): ProjectSummary {
       contractType: project.contract_type ?? null,
       parentProject: project.parent_project ?? null,
     },
-    members: mapProjectMembers(project.project_users),
+    members,
     metrics,
     reviews: reviewSummaries,
     issues: issueSummaries,
@@ -633,7 +676,7 @@ export async function getProjectSummaries(): Promise<ProjectSummary[]> {
     const supabase = await createServerSupabaseClient()
     const { data, error } = await supabase
       .from("projects")
-      .select("*, reviews(*, documents(*), issues(*)), project_milestones(*), project_statuses(*), project_importances(*), project_disciplines(*), project_states(*), project_suitabilities(*), project_review_stages(*), project_response_roles(*), project_users(*, user:users(*), roles:roles(*)), project_packages(*), project_classifications(*), project_review_phases(*)")
+      .select("*, reviews(*, documents(*), issues(*, author:users!created_by_user_id(first_name, last_name))), project_milestones(*), project_statuses(*), project_importances(*), project_disciplines(*), project_states(*), project_suitabilities(*), project_review_stages(*), project_response_roles(*), project_users(*, user:users(*, user_companies(*, companies(*))), roles:roles(*)), project_packages(*), project_classifications(*), project_review_phases(*)")
       .order("project_name")
 
     if (error) {
@@ -654,7 +697,7 @@ export async function getProjectSummaryById(projectId: string): Promise<ProjectS
     const supabase = await createServerSupabaseClient()
     const { data, error } = await supabase
       .from("projects")
-      .select("*, reviews(*, documents(*), issues(*), review_users(*, user:users(*))), project_milestones(*), project_statuses(*), project_importances(*), project_disciplines(*), project_states(*), project_suitabilities(*), project_review_stages(*), project_response_roles(*), project_users(*, user:users(*), roles:roles(*)), project_packages(*), project_classifications(*), project_review_phases(*)")
+      .select("*, reviews(*, documents(*), issues(*, author:users!created_by_user_id(first_name, last_name)), review_users(*, user:users(*))), project_milestones(*), project_statuses(*), project_importances(*), project_disciplines(*), project_states(*), project_suitabilities(*), project_review_stages(*), project_response_roles(*), project_users(*, user:users(*, user_companies(*, companies(*))), roles:roles(*)), project_packages(*), project_classifications(*), project_review_phases(*)")
       .eq("id", projectId)
       .maybeSingle()
 
@@ -670,6 +713,31 @@ export async function getProjectSummaryById(projectId: string): Promise<ProjectS
   } catch (error) {
     throw new Error(
       `Failed to fetch project ${projectId}: ${error instanceof Error ? error.message : "Unknown error"}`,
+    )
+  }
+}
+
+export async function getProjectSummaryBySlug(slug: string): Promise<ProjectSummary | undefined> {
+  try {
+    const supabase = await createServerSupabaseClient()
+    const { data, error } = await supabase
+      .from("projects")
+      .select("*, reviews(*, documents(*), issues(*), review_users(*, user:users(*))), project_milestones(*), project_statuses(*), project_importances(*), project_disciplines(*), project_states(*), project_suitabilities(*), project_review_stages(*), project_response_roles(*), project_users(*, user:users(*, user_companies(*, companies(*))), roles:roles(*)), project_packages(*), project_classifications(*), project_review_phases(*)")
+      .eq("slug", slug)
+      .maybeSingle()
+
+    if (error) {
+      throw new Error(error.message)
+    }
+
+    if (!data) {
+      return undefined
+    }
+
+    return mapProjectSummary(data as unknown as ProjectWithRelations)
+  } catch (error) {
+    throw new Error(
+      `Failed to fetch project by slug ${slug}: ${error instanceof Error ? error.message : "Unknown error"}`,
     )
   }
 }
@@ -758,7 +826,8 @@ export async function updateProjectSettings(projectId: string, settings: Project
           ...currentSettings,
           documentNamingConvention: settings.documentNamingConvention,
           documentCodeLocation: settings.documentCodeLocation,
-          titleblockTemplateUrl: settings.titleblockTemplateUrl
+          titleblockTemplateUrl: settings.titleblockTemplateUrl,
+          companies: settings.companies
         }
       })
       .eq("id", projectId)

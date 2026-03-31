@@ -67,6 +67,7 @@ type ReviewDetailsViewProps = {
   review: ReviewDetail
   isAdmin?: boolean
   availableMilestones?: string[]
+  projectMemberRoles?: Record<string, string>
 }
 
 const statusVariantMap: Record<ReviewDetail["status"], { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
@@ -93,7 +94,7 @@ function formatFileSize(size: number | string | undefined | null) {
   return Math.round(bytes / 1024) + " KB"
 }
 
-export function ReviewDetailsView({ review, isAdmin, availableMilestones = [] }: ReviewDetailsViewProps) {
+export function ReviewDetailsView({ review, isAdmin, availableMilestones = [], projectMemberRoles = {} }: ReviewDetailsViewProps) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [confirmOpen, setConfirmOpen] = useState(false)
@@ -552,7 +553,7 @@ export function ReviewDetailsView({ review, isAdmin, availableMilestones = [] }:
                 </div>
               ) : (
                 <Link
-                  href={`/reviews/${review.id}/documents/${document.id}${isChild && document.pageNumber ? `?page=${document.pageNumber}` : ""}`}
+                  href={`/reviews/${review.slug}/documents/${document.id}${isChild && document.pageNumber ? `?page=${document.pageNumber}` : ""}`}
                   prefetch={false}
                   className={cn("text-primary hover:underline font-medium text-left", isChild && "text-xs")}
                 >
@@ -627,7 +628,7 @@ export function ReviewDetailsView({ review, isAdmin, availableMilestones = [] }:
                   variant="ghost"
                   size="sm"
                   className="gap-1"
-                  onClick={() => router.push(`/reviews/${review.id}/documents/${document.id}`)}
+                  onClick={() => router.push(`/reviews/${review.slug}/documents/${document.id}`)}
                 >
                   <FileText className="size-4" />
                   Preview
@@ -651,7 +652,7 @@ export function ReviewDetailsView({ review, isAdmin, availableMilestones = [] }:
                 variant="ghost"
                 size="sm"
                 className="h-7 px-2"
-                onClick={() => router.push(`/reviews/${review.id}/documents/${document.id}${document.pageNumber ? `?page=${document.pageNumber}` : ""}`)}
+                onClick={() => router.push(`/reviews/${review.slug}/documents/${document.id}${document.pageNumber ? `?page=${document.pageNumber}` : ""}`)}
               >
                 <FileText className="size-3" />
                 <span className="text-[10px]">Preview</span>
@@ -692,7 +693,7 @@ export function ReviewDetailsView({ review, isAdmin, availableMilestones = [] }:
           <BreadcrumbSeparator />
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
-              <Link href={`/projects/${review.project.id}`}>
+              <Link href={`/${review.project.slug || review.project.id}`}>
                 {review.project.projectName || "Project"}
               </Link>
             </BreadcrumbLink>
@@ -936,6 +937,7 @@ export function ReviewDetailsView({ review, isAdmin, availableMilestones = [] }:
             <AddReviewerDialog
               reviewId={review.id}
               existingReviewerIds={review.reviewers.map(r => r.id)}
+              projectMemberRoles={projectMemberRoles}
             />
           </CardHeader>
           <CardContent>

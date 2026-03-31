@@ -25,6 +25,7 @@ user_companies [icon: users, color: lightblue]{
 
 projects [icon: folder, color: blue]{
   id uuid pk
+  slug text [unique, not null]
   project_number string
   project_name string
   project_location string // map coordinates
@@ -39,6 +40,7 @@ project_users [icon: users, color: lightblue]{
 
 reviews [icon: check-square, color: green]{
   id uuid pk
+  slug text [unique, not null]
   review_name string
   review_number string
   milestone string

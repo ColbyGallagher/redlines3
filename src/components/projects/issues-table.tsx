@@ -549,7 +549,7 @@ export function IssuesTable({ issues, summary }: IssuesTableProps) {
                         )}
                         <div className="space-y-0.5">
                           <Link 
-                            href={`/reviews/${issue.reviewId}/documents/${issue.documentId}?page=${issue.pageNumber}&annotationId=${issue.id}`}
+                            href={`/reviews/${issue.reviewSlug}/documents/${issue.documentId}?page=${issue.pageNumber}&annotationId=${issue.id}`}
                             className="font-semibold text-sm text-primary hover:underline leading-none inline-block pb-0.5"
                           >
                             {issue.issueNumber}

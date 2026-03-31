@@ -16,12 +16,12 @@ export type ExtractionSetup = {
   name: string
   settings: ExtractionSettings
 }
-
 export type ProjectSettings = {
   importances?: string[] | null
   disciplines?: string[] | null
   extraction_settings?: ExtractionSettings | null
   extraction_setups?: ExtractionSetup[] | null
+  companies?: string[] | null
 }
 
 type GenericRelationship = {
@@ -35,6 +35,7 @@ type GenericRelationship = {
 
 export type Project = {
   id: string
+  slug: string
   project_number: string
   project_name: string
   project_location: string | null
@@ -50,6 +51,7 @@ export type Project = {
 
 export type Review = {
   id: string
+  slug: string
   review_name: string
   review_number: string
   milestone: string | null
@@ -74,7 +76,10 @@ export type ProjectReviewPhase = {
   duration_days: number
   order_index: number
   allowed_roles: string[]
-  permissions: Record<string, string[]>
+  permissions: {
+    roles: Record<string, string[]>
+    companies: string[]
+  }
   state: "Active" | "Complete" | "Archived"
   created_at?: string | null
   updated_at?: string | null

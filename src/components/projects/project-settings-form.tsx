@@ -18,10 +18,17 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog"
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select"
 
 import { ExtractionSetup, ExtractionSettings } from "@/lib/db/types"
 import { ExtractionCalibrationDialog } from "@/components/reviews/extraction-calibration-dialog"
-import { Trash2, Edit2, Plus, FileUp } from "lucide-react"
+import { Trash2, Edit2, Plus, FileUp, Briefcase } from "lucide-react"
 
 
 type ProjectSettings = {
@@ -36,6 +43,7 @@ type ProjectSettings = {
     defaultResponsePeriods: { role: string; days: number }[]
     extraction_settings?: ExtractionSettings | null
     extraction_setups?: ExtractionSetup[] | null
+    companies: string[]
 }
 
 type ProjectSettingsResponse = {
@@ -54,6 +62,7 @@ type SettingsFormState = {
     defaultResponsePeriods: { role: string; days: number }[]
     extraction_settings?: ExtractionSettings | null
     extraction_setups: ExtractionSetup[]
+    companies: string[]
 }
 
 function createInitialFormState(settings: ProjectSettings): SettingsFormState {
@@ -68,6 +77,7 @@ function createInitialFormState(settings: ProjectSettings): SettingsFormState {
         defaultReviewTimes: settings.defaultReviewTimes.map((entry) => ({ ...entry })),
         defaultResponsePeriods: settings.defaultResponsePeriods.map((entry) => ({ ...entry })),
         extraction_setups: settings.extraction_setups ? [...settings.extraction_setups] : [],
+        companies: settings.companies ? [...settings.companies] : [],
     }
 }
 
@@ -87,6 +97,7 @@ export function ProjectSettingsForm({ projectId }: ProjectSettingsFormProps) {
     const [isSamplePdfDialogOpen, setIsSamplePdfDialogOpen] = React.useState(false)
     const [samplePdfUrl, setSamplePdfUrl] = React.useState<string | null>(null)
     const [isDeletingSetup, setIsDeletingSetup] = React.useState<number | null>(null)
+    const [allCompanies, setAllCompanies] = React.useState<any[]>([])
 
     const [isUnsavedChangesDialogOpen, setIsUnsavedChangesDialogOpen] = React.useState(false)
     const [onConfirmDiscard, setOnConfirmDiscard] = React.useState<(() => void) | null>(null)
@@ -111,6 +122,13 @@ export function ProjectSettingsForm({ projectId }: ProjectSettingsFormProps) {
                 const data: ProjectSettingsResponse = await response.json()
                 setSettings(data.settings)
                 setFormState(createInitialFormState(data.settings))
+
+                // Fetch all companies
+                const companiesRes = await fetch("/api/companies")
+                if (companiesRes.ok) {
+                    const companies = await companiesRes.json()
+                    setAllCompanies(companies)
+                }
             } catch (error) {
                 console.error("Failed to load project settings", error)
                 setSettings(null)
@@ -161,7 +179,8 @@ export function ProjectSettingsForm({ projectId }: ProjectSettingsFormProps) {
             !compareArrays(formState.suitabilities, settings.suitabilities) ||
             !isReviewTimesEqual() ||
             !isResponsePeriodsEqual() ||
-            !isExtractionSetupsEqual()
+            !isExtractionSetupsEqual() ||
+            !compareArrays(formState.companies, settings.companies)
         )
     }, [settings, formState])
 
@@ -278,6 +297,7 @@ export function ProjectSettingsForm({ projectId }: ProjectSettingsFormProps) {
                         states: formState.states,
                         suitabilities: formState.suitabilities,
                         extraction_setups: formState.extraction_setups,
+                        companies: formState.companies,
                     },
                 }),
             })
@@ -296,9 +316,8 @@ export function ProjectSettingsForm({ projectId }: ProjectSettingsFormProps) {
                     extraction_setups: [...formState.extraction_setups],
                     packages: [...formState.packages],
                     classifications: [...formState.classifications],
+                    companies: [...formState.companies],
                 }
-                setSettings(updatedSettings)
-                return true
                 setSettings(updatedSettings)
                 return true
             } else {
@@ -336,6 +355,85 @@ export function ProjectSettingsForm({ projectId }: ProjectSettingsFormProps) {
                 <form id="project-settings-form" className="space-y-10 p-6" onSubmit={handleSubmit}>
                     {settings && formState ? (
                         <>
+                            <section className="space-y-4">
+                                <header className="flex flex-wrap items-center justify-between gap-2">
+                                    <div>
+                                        <h2 className="text-lg font-semibold">Project Companies</h2>
+                                        <p className="text-muted-foreground text-sm">
+                                            Manage companies officially associated with this project. These companies can be used to filter permissions for various review phases.
+                                        </p>
+                                    </div>
+                                </header>
+                                <div className="space-y-4">
+                                    <div className="flex gap-2">
+                                        <Select
+                                            onValueChange={(companyId) => {
+                                                if (!companyId) return
+                                                if (formState.companies.includes(companyId)) return
+                                                
+                                                setFormState(prev => prev ? ({
+                                                    ...prev,
+                                                    companies: [...prev.companies, companyId]
+                                                }) : null)
+                                            }}
+                                        >
+                                            <SelectTrigger className="w-full">
+                                                <SelectValue placeholder="Select a company to add..." />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {allCompanies
+                                                    .filter(c => !formState.companies.includes(c.id))
+                                                    .map(c => (
+                                                        <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                                                    ))
+                                                }
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="grid gap-3">
+                                        {formState.companies.length ? (
+                                            formState.companies.map((companyId) => {
+                                                const company = allCompanies.find(c => c.id === companyId) || { name: companyId }
+                                                return (
+                                                    <div
+                                                        key={companyId}
+                                                        className="border-border hover:border-primary/50 flex items-center justify-between gap-3 rounded-lg border bg-card p-4 transition"
+                                                    >
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="size-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                                                                <Briefcase className="size-4 text-primary" />
+                                                            </div>
+                                                            <div>
+                                                                <h3 className="font-medium text-sm">{company.name}</h3>
+                                                            </div>
+                                                        </div>
+                                                        <Button
+                                                            type="button"
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="h-8 w-8 text-destructive hover:text-destructive"
+                                                            onClick={() => {
+                                                                setFormState(prev => prev ? ({
+                                                                    ...prev,
+                                                                    companies: prev.companies.filter(id => id !== companyId)
+                                                                }) : null)
+                                                            }}
+                                                        >
+                                                            <Trash2 className="size-4" />
+                                                        </Button>
+                                                    </div>
+                                                )
+                                            })
+                                        ) : (
+                                            <div className="text-muted-foreground border border-dashed rounded-lg p-4 text-center text-sm">
+                                                No companies added to this project yet.
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </section>
+
+                            <Separator />
 
                             <section className="space-y-4">
                                 <header className="flex flex-wrap items-center justify-between gap-2">
@@ -401,10 +499,10 @@ export function ProjectSettingsForm({ projectId }: ProjectSettingsFormProps) {
                             variant="outline"
                             onClick={() => {
                                 if (isDirty) {
-                                    setOnConfirmDiscard(() => () => router.push(`/projects/${projectId}`))
+                                    setOnConfirmDiscard(() => () => router.push(`/${projectId}`))
                                     setIsUnsavedChangesDialogOpen(true)
                                 } else {
-                                    router.push(`/projects/${projectId}`)
+                                    router.push(`/${projectId}`)
                                 }
                             }}
                         >

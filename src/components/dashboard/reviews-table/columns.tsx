@@ -217,7 +217,7 @@ export const columns: ColumnDef<ReviewSummary>[] = [
           type="button"
           onClick={(event) => {
             event.stopPropagation()
-            navigateProject?.(project.id, row.original)
+            navigateProject?.(project.slug || project.id, row.original)
           }}
           className="inline-flex items-center gap-1 text-left font-medium text-foreground transition hover:underline"
         >

@@ -45,18 +45,21 @@ export function ReviewsDataTable({ data }: DataTableProps) {
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
   const [rowSelection, setRowSelection] = useState({})
 
-  const navigateReview = useCallback((reviewId: string) => {
-    router.push(`/reviews/${reviewId}`)
+  const navigateReview = useCallback((reviewId: string, review?: ReviewSummary) => {
+    // Use slug if available (from review object), fall back to reviewId for backward compat
+    const slug = review?.slug ?? reviewId
+    const projectSlug = review?.project?.slug ?? 'unknown'
+    router.push(`/${projectSlug}/${slug}`)
   }, [router])
 
-  const navigateProject = useCallback((projectId: string) => {
-    router.push(`/projects/${projectId}`)
+  const navigateProject = useCallback((projectSlug: string) => {
+    router.push(`/${projectSlug}`)
   }, [router])
 
-  const handleRowKeyDown = useCallback((event: KeyboardEvent<HTMLTableRowElement>, id: string) => {
+  const handleRowKeyDown = useCallback((event: KeyboardEvent<HTMLTableRowElement>, row: ReviewSummary) => {
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault()
-      navigateReview(id)
+      navigateReview(row.id, row)
     }
   }, [navigateReview])
 
@@ -135,8 +138,8 @@ export function ReviewsDataTable({ data }: DataTableProps) {
                 <TableRow
                   key={row.id}
                   data-state={row.getIsSelected() && "selected"}
-                  onClick={() => navigateReview(row.original.id)}
-                  onKeyDown={(event) => handleRowKeyDown(event, row.original.id)}
+                  onClick={() => navigateReview(row.original.id, row.original)}
+                  onKeyDown={(event) => handleRowKeyDown(event, row.original)}
                   tabIndex={0}
                   className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 >

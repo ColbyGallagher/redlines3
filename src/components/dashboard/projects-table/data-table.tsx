@@ -45,14 +45,14 @@ export function ProjectsDataTable({ data }: DataTableProps) {
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
   const [rowSelection, setRowSelection] = useState({})
 
-  const navigateProject = useCallback((projectId: string) => {
-    router.push(`/projects/${projectId}`)
+  const navigateProject = useCallback((projectSlug: string) => {
+    router.push(`/${projectSlug}`)
   }, [router])
 
-  const handleRowKeyDown = useCallback((event: KeyboardEvent<HTMLTableRowElement>, id: string) => {
+  const handleRowKeyDown = useCallback((event: KeyboardEvent<HTMLTableRowElement>, projectSlug: string) => {
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault()
-      navigateProject(id)
+      navigateProject(projectSlug)
     }
   }, [navigateProject])
 
@@ -127,8 +127,8 @@ export function ProjectsDataTable({ data }: DataTableProps) {
                 <TableRow
                   key={row.id}
                   data-state={row.getIsSelected() && "selected"}
-                  onClick={() => navigateProject(row.original.project.id)}
-                  onKeyDown={(event) => handleRowKeyDown(event, row.original.project.id)}
+                  onClick={() => navigateProject(row.original.project.slug)}
+                  onKeyDown={(event) => handleRowKeyDown(event, row.original.project.slug)}
                   tabIndex={0}
                   className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 >

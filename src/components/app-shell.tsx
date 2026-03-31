@@ -4,6 +4,7 @@ import * as React from "react"
 import { usePathname } from "next/navigation"
 import { AppSidebar } from "@/components/app-sidebar"
 import { SidebarInset, SidebarProvider, useSidebar } from "@/components/ui/sidebar"
+import { NavigationProvider } from "@/components/providers/navigation-provider"
 
 type AppShellProps = {
   children: React.ReactNode
@@ -34,11 +35,12 @@ export function AppShell({ children }: AppShellProps) {
   }
 
   return (
-    <SidebarProvider>
-      <SidebarCollapser />
-      <AppSidebar />
-      <SidebarInset>{children}</SidebarInset>
-    </SidebarProvider>
+    <NavigationProvider>
+      <SidebarProvider>
+        <SidebarCollapser />
+        <AppSidebar />
+        <SidebarInset>{children}</SidebarInset>
+      </SidebarProvider>
+    </NavigationProvider>
   )
 }
-

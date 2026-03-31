@@ -5,6 +5,7 @@ import { revalidatePath, revalidateTag } from "next/cache"
 
 import type { Database } from "@/lib/db/types"
 import { createServerSupabaseClient } from "@/lib/supabase/server"
+import { generateSlug } from "@/lib/utils/slug"
 
 const CONTRACT_TYPES = new Set([
   "Concept design",
@@ -106,7 +107,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No active organization found for this user." }, { status: 400 })
     }
 
+    const projectId = crypto.randomUUID()
+    const slug = generateSlug(projectName, projectId, "project")
+
     const insertPayload: any = {
+      id: projectId,
+      slug,
       project_name: projectName,
       project_number: projectNumber,
       project_location: projectLocation,

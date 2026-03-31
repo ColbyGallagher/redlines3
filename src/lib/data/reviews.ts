@@ -9,7 +9,11 @@ type ProjectRow = Database["public"]["Tables"]["projects"]["Row"]
 type DocumentRow = Database["public"]["Tables"]["documents"]["Row"]
 type IssueRow = Database["public"]["Tables"]["issues"]["Row"]
 type ReviewUserRow = Database["public"]["Tables"]["review_users"]["Row"] & {
-  user: Database["public"]["Tables"]["users"]["Row"] | null
+  user: (Database["public"]["Tables"]["users"]["Row"] & {
+    user_companies: (Database["public"]["Tables"]["user_companies"]["Row"] & {
+      companies: Database["public"]["Tables"]["companies"]["Row"] | null
+    })[] | null
+  }) | null
 }
 
 export type ReviewUser = {
@@ -65,6 +69,7 @@ export type ReviewIssue = {
 
 export type ReviewDetail = {
   id: string
+  slug: string
   reviewName: string
   reviewNumber: string
   milestone: string
@@ -77,6 +82,7 @@ export type ReviewDetail = {
   dueDateReplies: string
   project: {
     id: string
+    slug: string
     projectNumber: string
     projectName: string
     projectLocation: string
@@ -90,12 +96,14 @@ export type ReviewDetail = {
 
 export type ReviewSummary = {
   id: string
+  slug: string
   reviewName: string
   reviewNumber: string
   milestone: string
   dueDate: string | null
   project: {
     id: string
+    slug: string
     name: string
     number?: string
   } | null
@@ -106,6 +114,7 @@ export type ReviewSummary = {
 function mapReviewSummary(row: ReviewRow & { project: ProjectRow | null }): ReviewSummary {
   return {
     id: row.id,
+    slug: row.slug ?? row.id,
     reviewName: row.review_name ?? "Untitled review",
     reviewNumber: row.review_number ?? "",
     milestone: row.milestone ?? "",
@@ -113,6 +122,7 @@ function mapReviewSummary(row: ReviewRow & { project: ProjectRow | null }): Revi
     project: row.project
       ? {
         id: row.project.id,
+        slug: row.project.slug,
         name: row.project.project_name ?? "Untitled project",
         number: row.project.project_number ?? undefined,
       }
@@ -125,6 +135,7 @@ function mapReviewSummary(row: ReviewRow & { project: ProjectRow | null }): Revi
 function mapProject(project: ProjectRow | null): ReviewDetail["project"] {
   return {
     id: project?.id ?? "",
+    slug: project?.slug ?? "",
     projectNumber: project?.project_number ?? "",
     projectName: project?.project_name ?? "Untitled project",
     projectLocation: project?.project_location ?? "",
@@ -140,6 +151,11 @@ function mapReviewers(reviewUsers: ReviewUserRow[] | null | undefined, allViews:
     const firstName = formatName(user?.first_name)
     const lastName = formatName(user?.last_name)
 
+    const activeCompany = user?.user_companies?.find((uc: any) => uc.active)?.companies?.name 
+      || user?.user_companies?.[0]?.companies?.name 
+      || entry.company_name 
+      || "Unknown"
+
     return {
       id: user?.id ?? entry.id,
       firstName,
@@ -148,7 +164,7 @@ function mapReviewers(reviewUsers: ReviewUserRow[] | null | undefined, allViews:
       jobTitle: formatName(user?.job_title),
       role: entry.role ?? "Reviewer",
       avatarFallback: toTitleCaseFallback(firstName, lastName),
-      company: "ColbyGallagher",
+      company: activeCompany,
       status: "Active",
       startedAt: entry.started_at,
       completedAt: entry.completed_at,
@@ -209,6 +225,7 @@ function mapReview(row: ReviewRow & {
 }): ReviewDetail {
   return {
     id: row.id,
+    slug: row.slug ?? row.id,
     reviewName: row.review_name ?? "Untitled review",
     reviewNumber: row.review_number ?? "",
     milestone: row.milestone ?? "",
@@ -234,7 +251,7 @@ export async function getReviewSummaries(): Promise<ReviewSummary[]> {
 
     const { data, error } = await supabase
       .from("reviews")
-      .select("*, project:projects(id, project_name, project_number)")
+      .select("*, project:projects(id, slug, project_name, project_number)")
       .order("review_name")
 
     if (error) {
@@ -282,6 +299,56 @@ export async function getReviewDetailById(reviewId: string): Promise<ReviewDetai
   } catch (error) {
     throw new Error(
       `Failed to fetch review ${reviewId}: ${error instanceof Error ? error.message : "Unknown error"}`,
+    )
+  }
+}
+
+export async function getReviewDetailBySlug(slug: string): Promise<ReviewDetail | undefined> {
+  try {
+    const supabase = await createServerSupabaseClient()
+
+    let { data, error } = await supabase
+      .from("reviews")
+      .select(
+        "*, project:projects(*), documents(*), issues(*), review_users(*, user:users(*, user_companies(*, companies(*)))), review_document_views(user_id, document_id)",
+      )
+      .eq("slug", slug)
+      .maybeSingle()
+
+    // Fallback to searching by ID (UUID) if slug lookup fails
+    if (!data && !error) {
+      const fallback = await supabase
+        .from("reviews")
+        .select(
+        "*, project:projects(*), documents(*), issues(*), review_users(*, user:users(*, user_companies(*, companies(*)))), review_document_views(user_id, document_id)",
+        )
+        .eq("id", slug)
+        .maybeSingle()
+      
+      data = fallback.data
+      error = fallback.error
+    }
+
+    if (error) {
+      throw new Error(error.message)
+    }
+
+    if (!data || typeof data !== "object") {
+      return undefined
+    }
+
+    const record = data as unknown as ReviewRow & {
+      project: ProjectRow | null
+      documents: DocumentRow[] | null
+      issues: IssueRow[] | null
+      review_users: ReviewUserRow[] | null
+      review_document_views: { user_id: string; document_id: string }[] | null
+    }
+
+    return mapReview(record)
+  } catch (error) {
+    throw new Error(
+      `Failed to fetch review by slug ${slug}: ${error instanceof Error ? error.message : "Unknown error"}`,
     )
   }
 }

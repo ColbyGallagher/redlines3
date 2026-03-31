@@ -46,3 +46,19 @@
     background-color: #065f46 !important; /* bg-green-800 */
     box-shadow: 0 0 0 2px #16a34a, 0 0 0 3px white !important;
 }
+
+/* Page Placeholder / Skeleton Loader */
+.e-pdfviewer-page {
+    background: linear-gradient(110deg, #f3f4f6 8%, #e5e7eb 18%, #f3f4f6 33%) !important;
+    background-size: 200% 100% !important;
+    animation: shimmer 2s linear infinite !important;
+}
+
+@keyframes shimmer {
+    0% {
+        background-position: -200% 0;
+    }
+    100% {
+        background-position: 200% 0;
+    }
+}

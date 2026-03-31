@@ -4,6 +4,7 @@ declare module "@tanstack/react-table" {
   interface TableMeta<TData extends RowData> {
     navigateReview?: (id: string, row?: TData) => void
     navigateProject?: (projectId: string, row?: TData) => void
+    projectSlug?: string
   }
 }
 

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache"
 import { createServerSupabaseClient } from "@/lib/supabase/server"
 import { getProjectSettings } from "@/lib/data/projects"
 import { extractMetadataFromPDF } from "@/lib/utils/pdf-extraction"
+import type { Document } from "@/lib/db/types"
 
 export type CreateDocumentState = {
     message?: string
@@ -85,7 +86,7 @@ export async function createDocument(
         }
 
         if (!data.skipRevalidate) {
-            revalidatePath(`/reviews/${data.reviewId}`)
+            revalidatePath('/reviews', 'layout')
         }
         return { message: "Success", id: newDoc?.id }
     } catch (error) {
@@ -203,7 +204,7 @@ export async function deleteDocument(documentId: string, reviewId: string, delet
             return { message: "Failed to delete document record: " + deleteError.message }
         }
 
-        revalidatePath(`/reviews/${reviewId}`)
+        revalidatePath('/reviews', 'layout')
         return { message: "Success" }
     } catch (error) {
         console.error("Unexpected error during deletion:", error)
@@ -313,11 +314,40 @@ export async function createDocumentsBatch(
             }
         }
 
-        revalidatePath(`/reviews/${data.reviewId}`)
+        revalidatePath('/reviews', 'layout')
         return { message: "Success", documents: allResults }
     } catch (error: any) {
         console.error("Unexpected error in createDocumentsBatch action:", error)
         const errorMessage = error.message || (typeof error === 'object' ? JSON.stringify(error) : String(error))
         return { message: "Failed to create documents: " + errorMessage }
+    }
+}
+
+export async function getProjectDocuments(projectId: string) {
+    const supabase = await createServerSupabaseClient()
+
+    try {
+        const { data, error } = await supabase
+            .from("documents")
+            .select(`
+                *,
+                reviews:reviews (
+                    id,
+                    review_name,
+                    slug
+                )
+            `)
+            .eq("project_id", projectId)
+            .order("created_at", { ascending: false })
+
+        if (error) {
+            console.error("Error fetching project documents:", error)
+            throw new Error(error.message)
+        }
+
+        return data as (Document & { reviews: { id: string, review_name: string, slug: string } | null })[]
+    } catch (error) {
+        console.error("Unexpected error in getProjectDocuments:", error)
+        throw new Error(error instanceof Error ? error.message : "Failed to fetch project documents")
     }
 }

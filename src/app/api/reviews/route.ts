@@ -5,6 +5,7 @@ import { revalidatePath, revalidateTag } from "next/cache"
 
 import type { Database } from "@/lib/db/types"
 import { createServerSupabaseClient } from "@/lib/supabase/server"
+import { generateSlug } from "@/lib/utils/slug"
 
 type CreateReviewRequestBody = {
   reviewName?: unknown
@@ -88,7 +89,39 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "You must be signed in to create a review." }, { status: 401 })
     }
 
+    // Role check: Admin or Developer role required (either project-level or global)
+    const { data: memberData } = await (supabase.from("project_users") as any)
+      .select("role")
+      .eq("project_id", projectId)
+      .eq("user_id", user.id)
+      .maybeSingle()
+
+    const projectRole = (memberData as any)?.role?.toLowerCase()
+
+    const { data: orgRoles } = await (supabase.from("user_companies") as any)
+      .select(`
+        roles:role_id (
+          name
+        )
+      `)
+      .eq("user_id", user.id)
+      .eq("active", true)
+
+    const globalRoles = (orgRoles || []).map((uc: any) => uc.roles?.name?.toLowerCase()).filter(Boolean)
+    const isGlobalAuthorized = globalRoles.includes('org admin') || globalRoles.includes('admin') || globalRoles.includes('developer')
+
+    const allowedProjectRoles = ["admin", "developer"]
+    if (!isGlobalAuthorized && !allowedProjectRoles.includes(projectRole)) {
+      return NextResponse.json({ error: "Unauthorized. Admin or Developer role required to create a review." }, { status: 403 })
+    }
+
+    // Generate a deterministic slug from the review name + a fresh UUID
+    const reviewId = crypto.randomUUID()
+    const slug = generateSlug(reviewName, reviewId, "review")
+
     const insertPayload: Database["public"]["Tables"]["reviews"]["Insert"] = {
+      id: reviewId,
+      slug,
       review_name: reviewName,
       review_number: reviewNumber,
       milestone,
@@ -96,13 +129,15 @@ export async function POST(request: Request) {
       due_date_issue_comments: dueDateIssueComments,
       due_date_replies: dueDateReplies,
       project_id: projectId,
+      state: "Active",
+      specific_status: "In Progress",
     }
 
     // TODO: replace with typed insert once Supabase schema typings are fully defined.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (supabase.from("reviews") as any)
       .insert(insertPayload)
-      .select("id")
+      .select("id, slug")
       .single()
 
     if (error) {

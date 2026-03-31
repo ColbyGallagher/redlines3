@@ -111,7 +111,7 @@ export function WorkflowPhasesDnd({ projectId, phases, onEdit, onDelete }: Workf
     setPermissionsDialogOpen(true)
   }
 
-  const handleSavePermissions = (phaseId: string, newPermissions: Record<string, string[]>) => {
+  const handleSavePermissions = (phaseId: string, newPermissions: { roles: Record<string, string[]>, companies: string[] }) => {
     const previousItems = [...items]
     const updatedItems = items.map(item => 
       item.id === phaseId ? { ...item, permissions: newPermissions } : item
@@ -155,6 +155,7 @@ export function WorkflowPhasesDnd({ projectId, phases, onEdit, onDelete }: Workf
         open={permissionsDialogOpen}
         onOpenChange={setPermissionsDialogOpen}
         phase={selectedPhase}
+        projectId={projectId}
         onSave={(newPerms) => selectedPhase && handleSavePermissions(selectedPhase.id, newPerms)}
         isPending={isPending}
       />
@@ -238,22 +239,57 @@ function PhasePermissionsDialog({
   open,
   onOpenChange,
   phase,
+  projectId,
   onSave,
   isPending
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   phase: ProjectReviewPhase | null
-  onSave: (permissions: Record<string, string[]>) => void
+  projectId: string
+  onSave: (permissions: { roles: Record<string, string[]>, companies: string[] }) => void
   isPending: boolean
 }) {
   const [localPermissions, setLocalPermissions] = React.useState<Record<string, string[]>>({})
+  const [selectedCompanies, setSelectedCompanies] = React.useState<string[]>([])
+  const [projectCompanies, setProjectCompanies] = React.useState<any[]>([])
+  const [isLoadingCompanies, setIsLoadingCompanies] = React.useState(false)
+
+  React.useEffect(() => {
+    if (open && projectId) {
+      setIsLoadingCompanies(true)
+      Promise.all([
+        fetch("/api/companies").then(res => res.json()),
+        fetch(`/api/projects/${projectId}/settings`).then(res => res.json())
+      ]).then(([allCompanies, projectSettings]) => {
+        const linkedCompanyIds: string[] = projectSettings.settings?.companies || []
+        const linkedCompanies = (allCompanies || []).filter((c: any) => linkedCompanyIds.includes(c.id))
+        setProjectCompanies(linkedCompanies)
+      }).finally(() => {
+        setIsLoadingCompanies(false)
+      })
+    }
+  }, [open, projectId])
 
   React.useEffect(() => {
     if (phase) {
-      setLocalPermissions(phase.permissions || {})
+      if (phase.permissions && "roles" in phase.permissions) {
+        setLocalPermissions(phase.permissions.roles || {})
+        setSelectedCompanies(phase.permissions.companies || [])
+      } else {
+        setLocalPermissions(phase.permissions as any || {})
+      }
     }
   }, [phase])
+
+  React.useEffect(() => {
+    if (phase && projectCompanies.length > 0) {
+      const hasExplicitCompanies = phase.permissions && "companies" in phase.permissions
+      if (!hasExplicitCompanies) {
+        setSelectedCompanies(projectCompanies.map(c => c.id))
+      }
+    }
+  }, [projectCompanies, phase])
 
   const togglePermission = (role: string, capability: string) => {
     const current = localPermissions[role] || []
@@ -273,6 +309,20 @@ function PhasePermissionsDialog({
       full[role] = ["view", "edit_own", "edit_others"]
     })
     setLocalPermissions(full)
+    setSelectedCompanies(projectCompanies.map(c => c.id))
+  }
+
+  const toggleCompany = (companyId: string) => {
+    setSelectedCompanies(prev => {
+      if (prev.includes(companyId)) {
+        if (prev.length <= 1) {
+          toast.error("At least one company must have access")
+          return prev
+        }
+        return prev.filter(id => id !== companyId)
+      }
+      return [...prev, companyId]
+    })
   }
 
   return (
@@ -281,36 +331,70 @@ function PhasePermissionsDialog({
         <DialogHeader>
           <DialogTitle>Phase Permissions: {phase?.phase_name}</DialogTitle>
           <DialogDescription>
-            Specify which roles can view or edit issues during this phase.
+            Restrict access to specific companies or roles during this phase. Project and Org Admins always have full access.
           </DialogDescription>
         </DialogHeader>
         
-        <div className="py-4">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Role</TableHead>
-                {CAPABILITIES.map(cap => (
-                  <TableHead key={cap.id} className="text-center">{cap.label}</TableHead>
+        <div className="py-4 space-y-6 max-h-[60vh] overflow-y-auto pr-2">
+          <div className="space-y-3">
+            <h4 className="text-sm font-medium">Companies with access</h4>
+            {isLoadingCompanies ? (
+              <div className="text-sm text-muted-foreground animate-pulse">Loading project companies...</div>
+            ) : projectCompanies.length > 0 ? (
+              <div className="flex flex-wrap gap-4 p-3 border rounded-md bg-muted/30">
+                {projectCompanies.map((company) => (
+                  <div key={company.id} className="flex items-center space-x-2">
+                    <Checkbox 
+                      id={`company-${company.id}`}
+                      checked={selectedCompanies.includes(company.id)}
+                      onCheckedChange={() => toggleCompany(company.id)}
+                    />
+                    <label 
+                      htmlFor={`company-${company.id}`}
+                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                    >
+                      {company.name}
+                    </label>
+                  </div>
                 ))}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {ROLES.map(role => (
-                <TableRow key={role}>
-                  <TableCell className="font-medium capitalize">{role}</TableCell>
-                  {CAPABILITIES.map(cap => (
-                    <TableCell key={cap.id} className="text-center">
-                      <Checkbox
-                        checked={(localPermissions[role] || []).includes(cap.id)}
-                        onCheckedChange={() => togglePermission(role, cap.id)}
-                      />
-                    </TableCell>
+              </div>
+            ) : (
+              <div className="text-sm text-muted-foreground border border-dashed rounded-md p-3 text-center">
+                No companies are currently associated with this project. Edit project settings to add companies.
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-3">
+            <h4 className="text-sm font-medium">Role Permissions</h4>
+            <div className="border rounded-md overflow-hidden">
+              <Table>
+                <TableHeader className="bg-muted/50">
+                  <TableRow>
+                    <TableHead>Role</TableHead>
+                    {CAPABILITIES.map(cap => (
+                      <TableHead key={cap.id} className="text-center">{cap.label}</TableHead>
+                    ))}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {ROLES.map(role => (
+                    <TableRow key={role}>
+                      <TableCell className="font-medium capitalize">{role}</TableCell>
+                      {CAPABILITIES.map(cap => (
+                        <TableCell key={cap.id} className="text-center">
+                          <Checkbox
+                            checked={(localPermissions[role] || []).includes(cap.id)}
+                            onCheckedChange={() => togglePermission(role, cap.id)}
+                          />
+                        </TableCell>
+                      ))}
+                    </TableRow>
                   ))}
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                </TableBody>
+              </Table>
+            </div>
+          </div>
         </div>
 
         <DialogFooter className="flex items-center justify-between sm:justify-between w-full">
@@ -321,7 +405,7 @@ function PhasePermissionsDialog({
             <Button variant="outline" size="sm" onClick={() => onOpenChange(false)} type="button" disabled={isPending}>
               Cancel
             </Button>
-            <Button size="sm" onClick={() => onSave(localPermissions)} type="button" disabled={isPending}>
+            <Button size="sm" onClick={() => onSave({ roles: localPermissions, companies: selectedCompanies })} type="button" disabled={isPending || isLoadingCompanies}>
               {isPending ? "Saving..." : "Save Permissions"}
             </Button>
           </div>

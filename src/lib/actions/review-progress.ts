@@ -42,7 +42,7 @@ export async function logDocumentView(reviewId: string, documentId: string) {
                 .eq("user_id", user.id)
         }
 
-        revalidatePath(`/reviews/${reviewId}`)
+        revalidatePath('/reviews', 'layout')
         return { success: true }
     } catch (error) {
         console.error("Unexpected error logging document view:", error)
@@ -69,7 +69,7 @@ export async function markReviewAsComplete(reviewId: string) {
             return { success: false, message: error.message }
         }
 
-        revalidatePath(`/reviews/${reviewId}`)
+        revalidatePath('/reviews', 'layout')
         return { success: true, message: "Your review has been marked as complete." }
     } catch (error) {
         console.error("Unexpected error marking review as complete:", error)

@@ -1,6 +1,6 @@
 "use client"
 
-import React, { FormEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import React, { FormEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react"
 import { createPortal } from "react-dom"
 import { Loader2, AlertCircle, PanelLeft, ListChecks, Filter, Search, User, ChevronDown, Trash2 } from "lucide-react"
 import { toast } from "sonner"
@@ -968,20 +968,16 @@ export function PDFMarkupViewer({ reviewId, document, childDocuments = [], initi
             activeTool={activeTool}
           />
 
-          {/* Custom Annotation Overlay Layer - We render all page overlays 
-              but only the ones currently in Syncfusion's DOM will actually find a portal target */}
-          {Array.from({ length: numPages }, (_, index) => (
-            <SyncfusionPageOverlay
-              key={`page_overlay_${index + 1}`}
-              pageNumber={index + 1}
-              annotations={annotations}
-              activeTool={activeTool}
-              onAddAnnotation={handleAddAnnotation}
-              onDeleteAnnotation={handleDeleteAnnotation}
-              onSelectAnnotation={setSelectedAnnotationId}
-              selectedAnnotationId={selectedAnnotationId}
-            />
-          ))}
+          {/* Custom Annotation Overlay Layer — only for pages Syncfusion currently has in the DOM */}
+          <VisiblePageOverlays
+            containerRef={containerRef}
+            annotations={annotations}
+            activeTool={activeTool}
+            onAddAnnotation={handleAddAnnotation}
+            onDeleteAnnotation={handleDeleteAnnotation}
+            onSelectAnnotation={setSelectedAnnotationId}
+            selectedAnnotationId={selectedAnnotationId}
+          />
         </div>
       </div>
       {/* 3. Bottom Bar */}
@@ -1161,14 +1157,113 @@ export function PDFMarkupViewer({ reviewId, document, childDocuments = [], initi
   )
 }
 /**
- * SyncfusionPageOverlay
- * 
- * This component handles the "bridge" between our React-based annotation system
- * and Syncfusion's virtualized DOM. It finds the Syncfusion page element in the DOM
- * and portals our AnnotationLayer into it.
+ * VisiblePageOverlays
+ *
+ * Uses a single MutationObserver to track which Syncfusion page elements are
+ * currently in the DOM and only renders overlays for those (typically 2-4 pages).
+ * Replaces the old approach of mounting 42+ SyncfusionPageOverlay components
+ * each with their own setInterval DOM poll.
  */
-const SyncfusionPageOverlay = React.memo(function SyncfusionPageOverlay({
+function VisiblePageOverlays({
+  containerRef,
+  annotations,
+  activeTool,
+  onAddAnnotation,
+  onDeleteAnnotation,
+  onSelectAnnotation,
+  selectedAnnotationId,
+}: {
+  containerRef: RefObject<HTMLDivElement | null>
+  annotations: RealtimeAnnotation[]
+  activeTool: "pan" | "issue"
+  onAddAnnotation: (event: React.MouseEvent<HTMLDivElement>, page: number) => void
+  onDeleteAnnotation: (id: string) => void
+  onSelectAnnotation: (id: string | null) => void
+  selectedAnnotationId: string | null
+}) {
+  // Map of pageNumber → DOM element for pages Syncfusion currently has rendered
+  const [visiblePages, setVisiblePages] = useState<Map<number, HTMLElement>>(new Map())
+
+  // Pre-index annotations by page so each overlay only receives its own
+  const annotationsByPage = useMemo(() => {
+    const map = new Map<number, RealtimeAnnotation[]>()
+    for (const ann of annotations) {
+      if (!ann || typeof ann !== 'object') continue
+      const arr = map.get(ann.page)
+      if (arr) { arr.push(ann) } else { map.set(ann.page, [ann]) }
+    }
+    return map
+  }, [annotations])
+
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+
+    const PAGE_ID_REGEX = /^syncfusion-pdf-viewer_page(?:Container|Div|Canvas|View)_(\d+)$/
+
+    /** Scan the container for Syncfusion page elements and update state */
+    const scan = () => {
+      const next = new Map<number, HTMLElement>()
+      // Syncfusion page containers all have IDs matching the regex above
+      const candidates = container.querySelectorAll<HTMLElement>('[id^="syncfusion-pdf-viewer_page"]')
+      for (const el of candidates) {
+        const match = el.id.match(PAGE_ID_REGEX)
+        if (match) {
+          const pageNum = parseInt(match[1], 10) + 1 // 0-indexed → 1-indexed
+          // Keep the first match per page (Container is preferred)
+          if (!next.has(pageNum)) {
+            next.set(pageNum, el)
+          }
+        }
+      }
+      setVisiblePages(prev => {
+        // Only update if the set of visible pages actually changed
+        if (prev.size === next.size) {
+          let same = true
+          for (const [k, v] of next) {
+            if (prev.get(k) !== v) { same = false; break }
+          }
+          if (same) return prev
+        }
+        return next
+      })
+    }
+
+    // Initial scan
+    scan()
+
+    // Observe mutations — Syncfusion adds/removes page divs as user scrolls
+    const observer = new MutationObserver(scan)
+    observer.observe(container, { childList: true, subtree: true })
+
+    return () => observer.disconnect()
+  }, [containerRef])
+
+  return (
+    <>
+      {Array.from(visiblePages.entries()).map(([pageNumber, element]) => (
+        <VisiblePagePortal
+          key={pageNumber}
+          pageNumber={pageNumber}
+          targetElement={element}
+          annotations={annotationsByPage.get(pageNumber) ?? EMPTY_ANNOTATIONS}
+          activeTool={activeTool}
+          onAddAnnotation={onAddAnnotation}
+          onDeleteAnnotation={onDeleteAnnotation}
+          onSelectAnnotation={onSelectAnnotation}
+          selectedAnnotationId={selectedAnnotationId}
+        />
+      ))}
+    </>
+  )
+}
+
+const EMPTY_ANNOTATIONS: RealtimeAnnotation[] = []
+
+/** Thin portal wrapper — no timers, no polling */
+const VisiblePagePortal = React.memo(function VisiblePagePortal({
   pageNumber,
+  targetElement,
   annotations,
   activeTool,
   onAddAnnotation,
@@ -1177,6 +1272,7 @@ const SyncfusionPageOverlay = React.memo(function SyncfusionPageOverlay({
   selectedAnnotationId,
 }: {
   pageNumber: number
+  targetElement: HTMLElement
   annotations: RealtimeAnnotation[]
   activeTool: "pan" | "issue"
   onAddAnnotation: (event: React.MouseEvent<HTMLDivElement>, page: number) => void
@@ -1184,39 +1280,6 @@ const SyncfusionPageOverlay = React.memo(function SyncfusionPageOverlay({
   onSelectAnnotation: (id: string | null) => void
   selectedAnnotationId: string | null
 }) {
-  const [targetElement, setTargetElement] = useState<HTMLElement | null>(null)
-
-  useEffect(() => {
-    const checkElement = () => {
-      // Try multiple possible ID patterns
-      const patterns = [
-        `syncfusion-pdf-viewer_pageContainer_${pageNumber - 1}`,
-        `syncfusion-pdf-viewer_pageDiv_${pageNumber - 1}`,
-        `syncfusion-pdf-viewer_pageCanvas_${pageNumber - 1}`,
-        `syncfusion-pdf-viewer_pageView_${pageNumber - 1}`
-      ];
-
-      let el: HTMLElement | null = null;
-      for (const pattern of patterns) {
-        el = document.getElementById(pattern);
-        if (el) break;
-      }
-
-      if (el && el !== targetElement) {
-        setTargetElement(el)
-      } else if (!el && targetElement) {
-        setTargetElement(null)
-      }
-    }
-
-    const interval = setInterval(checkElement, 300)
-    checkElement()
-
-    return () => clearInterval(interval)
-  }, [pageNumber, targetElement])
-
-  if (!targetElement) return null
-
   return createPortal(
     <AnnotationLayer
       pageNumber={pageNumber}
@@ -1249,16 +1312,19 @@ const AnnotationLayer = React.memo(function AnnotationLayer({
   onSelectAnnotation: (id: string | null) => void
   selectedAnnotationId: string | null
 }) {
-  const pageAnnotations = (annotations || []).filter((annotation) => annotation && annotation.page === pageNumber)
+  // Annotations are already pre-filtered to this page — no filtering needed here
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 })
 
-  const handleMouseMove = (event: React.MouseEvent<HTMLDivElement>) => {
-    const rect = event.currentTarget.getBoundingClientRect()
-    setMousePos({
-      x: event.clientX - rect.left,
-      y: event.clientY - rect.top,
-    })
-  }
+  // Only track mouse position when the issue tool is active
+  const handleMouseMove = activeTool === "issue"
+    ? (event: React.MouseEvent<HTMLDivElement>) => {
+        const rect = event.currentTarget.getBoundingClientRect()
+        setMousePos({
+          x: event.clientX - rect.left,
+          y: event.clientY - rect.top,
+        })
+      }
+    : undefined
 
   const handleClick = (event: React.MouseEvent<HTMLDivElement>) => {
     if (activeTool === "issue") {
@@ -1289,7 +1355,7 @@ const AnnotationLayer = React.memo(function AnnotationLayer({
           Click to create {activeTool}
         </div>
       )}
-      {pageAnnotations.map((annotation) => (
+      {annotations.map((annotation) => (
         <AnnotationBadge
           key={annotation.id}
           annotation={annotation}

@@ -44,9 +44,11 @@ import {
 import { useEffect, useMemo, useState } from "react"
 import { ProjectSwitcher } from "@/components/project-switcher"
 import { ProjectSettingsSheet } from "@/components/projects/project-settings-sheet"
+import { useNavigation } from "@/components/providers/navigation-provider"
 
 type SidebarProject = {
   id: string
+  slug: string
   name: string
 }
 
@@ -171,11 +173,30 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     return pathname === "/" || pathname.startsWith("/dashboard")
   }, [pathname])
 
+  const { activeProjectId: contextProjectId } = useNavigation()
+
   const activeProjectId = useMemo(() => {
+    if (contextProjectId) return contextProjectId
     if (!pathname) return undefined
-    const match = pathname.match(/^\/projects\/([^/]+)/)
-    return match ? match[1] : undefined
-  }, [pathname])
+    
+    // We are looking for /[projectSlug] or /[projectSlug]/[reviewSlug]
+    // Filter out reserved non-project roots
+    const reservedRoots = ["/dashboard", "/projects", "/admin", "/api", "/auth"]
+    if (reservedRoots.some(root => pathname.startsWith(root)) || pathname === "/") {
+      return undefined
+    }
+    
+    // Try to get the projectSlug from the path which is the first segment
+    const match = pathname.match(/^\/([^/]+)/)
+    if (match) {
+      const slug = match[1]
+      const foundProject = projects.find(p => p.slug === slug)
+      if (foundProject) {
+        return foundProject.id
+      }
+    }
+    return undefined
+  }, [pathname, contextProjectId, projects])
   const isAdmin = useMemo(() => {
     if (!user || !(user as any).roles) return false
     const roles = (user as any).roles as string[]
@@ -223,6 +244,36 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 <Link href="/dashboard">
                   <Home />
                   <span>Home</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarGroup>
+
+        <SidebarGroup>
+          <SidebarGroupLabel>Browse</SidebarGroupLabel>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild isActive={pathname === "/projects"} tooltip="Projects">
+                <Link href="/projects">
+                  <Folder />
+                  <span>Projects</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild isActive={pathname === "/reviews"} tooltip="Reviews">
+                <Link href="/reviews">
+                  <ClipboardList />
+                  <span>Reviews</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild isActive={pathname === "/issues"} tooltip="Issues">
+                <Link href="/issues">
+                  <ShieldCheck />
+                  <span>Issues</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -278,7 +329,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           <SidebarGroupLabel>Recent reviews</SidebarGroupLabel>
           <SidebarMenu>
             {recentReviews.map((review) => {
-              const isActive = pathname?.startsWith(`/reviews/${review.id}`)
+              const isActive = pathname?.startsWith(review.href)
 
               return (
                 <SidebarMenuItem key={review.id}>

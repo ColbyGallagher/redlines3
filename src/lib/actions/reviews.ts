@@ -32,7 +32,7 @@ export async function addReviewers(
             return { success: false, message: "Failed to add reviewers: " + error.message }
         }
 
-        revalidatePath(`/reviews/${reviewId}`)
+        revalidatePath('/reviews', 'layout')
 
         return { success: true, message: "Reviewer added successfully." }
     } catch (error) {
@@ -46,24 +46,39 @@ export async function getAllUsers(): Promise<ReviewUser[]> {
         const supabase = await createServerSupabaseClient()
 
         const { data, error } = await (supabase.from("users") as any)
-            .select("*")
+            .select(`
+                *,
+                user_companies (
+                    active,
+                    companies (
+                        name
+                    )
+                )
+            `)
             .order("first_name")
 
         if (error) {
             throw new Error(error.message)
         }
 
-        return (data || []).map((user: any) => ({
-            id: user.id,
-            firstName: user.first_name,
-            lastName: user.last_name,
-            email: user.email,
-            jobTitle: user.job_title ?? "",
-            role: "Reviewer",
-            avatarFallback: toTitleCaseFallback(user.first_name, user.last_name),
-            company: "ColbyGallagher",
-            status: "Active",
-        }))
+        return (data || []).map((user: any) => {
+            // Find active company name
+            const activeCompany = user.user_companies?.find((uc: any) => uc.active)?.companies?.name 
+                || user.user_companies?.[0]?.companies?.name 
+                || "Unknown"
+
+            return {
+                id: user.id,
+                firstName: user.first_name,
+                lastName: user.last_name,
+                email: user.email,
+                jobTitle: user.job_title ?? "",
+                role: "Reviewer",
+                avatarFallback: toTitleCaseFallback(user.first_name, user.last_name),
+                company: activeCompany,
+                status: "Active",
+            }
+        })
     } catch (error) {
         throw new Error(
             `Failed to fetch users: ${error instanceof Error ? error.message : "Unknown error"}`,
@@ -163,7 +178,7 @@ export async function updateReviewLifecycle(
         }
 
         revalidatePath(`/projects/${projectId}`)
-        revalidatePath(`/reviews/${reviewId}`)
+        revalidatePath('/reviews', 'layout')
 
         return { success: true, message: "Review updated successfully." }
     } catch (error) {

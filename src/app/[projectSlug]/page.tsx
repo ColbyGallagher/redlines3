@@ -12,20 +12,24 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
+import { ActiveProjectTracker } from "@/components/projects/active-project-tracker"
 import { AddProjectMemberDialog } from "@/components/projects/add-project-member-dialog"
 import { MemberActions } from "@/components/projects/member-actions"
 import { AccessDenied } from "@/components/projects/access-denied"
-import { getProjectSummaryById } from "@/lib/data/projects"
+import { getProjectSummaryBySlug } from "@/lib/data/projects"
 import { getRoles } from "@/lib/actions/users"
 import { getReferenceDocuments } from "@/lib/actions/reference-documents"
 import { ReferenceDocumentsTable } from "@/components/projects/reference-documents-table"
 import { UploadReferenceDialog } from "@/components/projects/upload-reference-dialog"
 import { IssuesTimelineChart } from "@/components/projects/issues-timeline-chart"
 import { IssuesDisciplineChart } from "@/components/projects/issues-discipline-chart"
+import { getProjectDocuments } from "@/lib/actions/documents"
+import { DocumentRegisterDataTable } from "@/components/projects/document-register/data-table"
+import { columns } from "@/components/projects/document-register/columns"
 
 type ProjectDashboardPageProps = {
   params: Promise<{
-    id: string
+    projectSlug: string
   }>
   searchParams: Promise<{
     created?: string
@@ -33,17 +37,20 @@ type ProjectDashboardPageProps = {
 }
 
 export default async function ProjectDashboardPage({ params, searchParams }: ProjectDashboardPageProps) {
-  const { id } = await params
+  const { projectSlug } = await params
   const { created } = await searchParams
 
-  const summary = await getProjectSummaryById(id)
+  const summary = await getProjectSummaryBySlug(projectSlug)
 
   if (!summary) {
-    return <AccessDenied projectId={id} />
+    return <AccessDenied projectId={projectSlug} />
   }
+
+  const id = summary.project.id
 
   const roles = await getRoles()
   const referenceDocuments = await getReferenceDocuments(id)
+  const projectDocuments = await getProjectDocuments(id)
 
   const supabase = await createServerSupabaseClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -138,11 +145,12 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
 
   return (
     <div className="flex flex-1 flex-col">
+      <ActiveProjectTracker projectId={id} />
       <ProjectSummaryHeader
         summary={summary}
         actions={
           <Button variant="outline" size="sm" asChild>
-            <Link href={`/projects/${id}/settings`}>
+            <Link href={`/${projectSlug}/settings`}>
               <Settings2 className="size-4" />
               <span>Project settings</span>
             </Link>
@@ -152,15 +160,30 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
       />
       <main className="flex flex-1 flex-col gap-6 p-6 pt-4">
         <InsightCallouts insights={summary.insights} />
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <IssuesTimelineChart data={timelineData} />
+          <IssuesDisciplineChart data={disciplineData} />
+        </div>
+
         <section className="flex flex-col gap-6">
           <ProjectReviewsList summary={summary} isAdmin={isAdmin} />
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <IssuesTimelineChart data={timelineData} />
-            <IssuesDisciplineChart data={disciplineData} />
-          </div>
-
           <IssuesTable issues={summary.issues} summary={summary} />
+
+          <section className="grid gap-4">
+            <Card>
+              <CardHeader>
+                <div className="space-y-1">
+                  <CardTitle>Document Register</CardTitle>
+                  <CardDescription>Comprehensive list of all review documents for this project</CardDescription>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <DocumentRegisterDataTable columns={columns} data={projectDocuments} projectSlug={projectSlug} />
+              </CardContent>
+            </Card>
+          </section>
         </section>
 
         <section className="grid gap-4">

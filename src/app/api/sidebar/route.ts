@@ -87,16 +87,21 @@ export async function GET() {
 
     const projectList = projects.map((project) => ({
       id: project.project.id,
+      slug: project.project.slug,
       name: project.project.projectName,
     }))
 
-    const reviewList = reviews.slice(0, 5).map((review) => ({
-      id: review.id,
-      name: review.reviewName,
-      href: `/reviews/${review.id}`,
-      projectId: review.project?.id ?? null,
-      projectName: review.project?.name ?? "Untitled project",
-    }))
+    const reviewList = reviews.slice(0, 5).map((review) => {
+      const projectSlug = review.project?.slug ?? "unknown"
+      return {
+        id: review.id,
+        name: review.reviewName,
+        slug: review.slug,
+        href: `/${projectSlug}/${review.slug}`,
+        projectId: review.project?.id ?? null,
+        projectName: review.project?.name ?? "Untitled project",
+      }
+    })
 
     return NextResponse.json({
       projects: projectList,

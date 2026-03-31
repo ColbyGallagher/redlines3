@@ -90,6 +90,15 @@ export async function addPhase(projectId: string, name: string, duration: number
 
         const nextOrderIndex = phases && (phases as any).length > 0 ? (phases as any)[0].order_index + 1 : 0
 
+        // Get project companies to set as default
+        const { data: project } = await supabase
+            .from("projects")
+            .select("settings")
+            .eq("id", projectId)
+            .single() as any
+        
+        const projectCompanies = project?.settings?.companies || []
+
         const { error } = await (supabase
             .from("project_review_phases" as any) as any)
             .insert({
@@ -98,11 +107,14 @@ export async function addPhase(projectId: string, name: string, duration: number
                 duration_days: duration,
                 order_index: nextOrderIndex,
                 permissions: {
-                  admin: ["view", "edit_own", "edit_others"],
-                  developer: ["view", "edit_own", "edit_others"],
-                  reviewer: ["view", "edit_own", "edit_others"],
-                  designer: ["view", "edit_own", "edit_others"],
-                  viewer: ["view"]
+                  roles: {
+                    admin: ["view", "edit_own", "edit_others"],
+                    developer: ["view", "edit_own", "edit_others"],
+                    reviewer: ["view", "edit_own", "edit_others"],
+                    designer: ["view", "edit_own", "edit_others"],
+                    viewer: ["view"]
+                  },
+                  companies: projectCompanies
                 },
                 state: state
             })
@@ -182,7 +194,7 @@ export async function updatePhaseOrder(projectId: string, orderedPhaseIds: strin
     }
 }
 
-export async function updatePhasePermissions(projectId: string, phaseId: string, permissions: Record<string, string[]>) {
+export async function updatePhasePermissions(projectId: string, phaseId: string, permissions: { roles: Record<string, string[]>, companies: string[] }) {
     try {
         const { supabase } = await checkAdminPrivileges(projectId)
 

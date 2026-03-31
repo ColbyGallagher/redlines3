@@ -7,15 +7,8 @@ import {
   Toolbar,
   Magnification,
   Navigation,
-  LinkAnnotation,
-  BookmarkView,
   ThumbnailView,
-  Print,
-  TextSelection,
-  TextSearch,
   Annotation,
-  FormFields,
-  FormDesigner,
   Inject,
 } from "@syncfusion/ej2-react-pdfviewer"
 import { Plus } from "lucide-react"
@@ -96,7 +89,11 @@ const SyncfusionPdfViewer = memo(forwardRef<SyncfusionPdfViewerHandle, Syncfusio
     const [isMounted, setIsMounted] = useState(false)
     const [stableDocumentPath, setStableDocumentPath] = useState<string | null>(null)
 
+    // Cache name for local storage
+    const CACHE_NAME = 'redlines-pdf-cache';
+
     // Convert HTTP URLs to Blob URLs to prevent Syncfusion from repeatedly re-fetching large documents
+    // and use the Cache API for persistent local storage
     useEffect(() => {
       if (!documentPath) return;
 
@@ -111,9 +108,34 @@ const SyncfusionPdfViewer = memo(forwardRef<SyncfusionPdfViewerHandle, Syncfusio
 
       const fetchAsBlob = async () => {
         try {
+          // Check if Cache API is available
+          const hasCache = 'caches' in window;
+          
+          if (hasCache) {
+            const cache = await caches.open(CACHE_NAME);
+            const cachedResponse = await cache.match(documentPath);
+            
+            if (cachedResponse && isActive) {
+              const blob = await cachedResponse.blob();
+              blobUrl = URL.createObjectURL(blob);
+              setStableDocumentPath(blobUrl);
+              return;
+            }
+          }
+
+          // Fallback to network fetch if not in cache or Cache API unavailable
           const response = await fetch(documentPath);
           if (!response.ok) throw new Error("Failed to fetch document: " + response.statusText);
+          
+          // Clone the response before consuming it so we can put it in cache
+          const responseToCache = response.clone();
           const blob = await response.blob();
+          
+          if (hasCache) {
+            const cache = await caches.open(CACHE_NAME);
+            cache.put(documentPath, responseToCache).catch(err => console.warn("Failed to cache PDF:", err));
+          }
+
           if (!isActive) return;
           
           blobUrl = URL.createObjectURL(blob);
@@ -165,7 +187,39 @@ const SyncfusionPdfViewer = memo(forwardRef<SyncfusionPdfViewerHandle, Syncfusio
             const clampedZoom = Math.max(10, Math.min(400, nextZoom))
             
             if (clampedZoom !== current) {
-              viewerRef.current?.magnificationModule?.zoomTo(clampedZoom)
+              // --- Zoom-to-pointer logic ---
+              // Find the scrollable container inside the viewer (Syncfusion renders one)
+              const viewerContainer = containerRef.current
+              const scrollEl = viewerContainer
+                ? (viewerContainer.querySelector('.e-pv-viewer-container') as HTMLElement ||
+                   viewerContainer.querySelector('[style*="overflow"]') as HTMLElement ||
+                   viewerContainer)
+                : null
+
+              if (scrollEl) {
+                const rect = scrollEl.getBoundingClientRect()
+                // Mouse position relative to the scroll container's top-left
+                const mouseX = event.clientX - rect.left
+                const mouseY = event.clientY - rect.top
+                // Fraction through the scrollable content where the mouse is pointing
+                const scrollLeft = scrollEl.scrollLeft
+                const scrollTop  = scrollEl.scrollTop
+                const contentX = scrollLeft + mouseX
+                const contentY = scrollTop  + mouseY
+
+                const scale = clampedZoom / current
+
+                viewerRef.current?.magnificationModule?.zoomTo(clampedZoom)
+
+                // After the zoom reflow, adjust scroll so the same content point
+                // is under the cursor.
+                queueMicrotask(() => {
+                  scrollEl.scrollLeft = contentX * scale - mouseX
+                  scrollEl.scrollTop  = contentY * scale - mouseY
+                })
+              } else {
+                viewerRef.current?.magnificationModule?.zoomTo(clampedZoom)
+              }
             }
           }
         }
@@ -299,6 +353,19 @@ const SyncfusionPdfViewer = memo(forwardRef<SyncfusionPdfViewerHandle, Syncfusio
       }
     }, [activeTool, isMounted])
 
+    // Set performance properties directly on the instance to avoid React DOM warnings
+    // for props not recognized by the Syncfusion React wrapper.
+    useEffect(() => {
+      if (viewerRef.current) {
+        const viewer = viewerRef.current as any;
+        viewer.enableIncrementalLoad = true;
+        viewer.enableTextSelection = false;
+        viewer.extractTextOption = 'None';
+        viewer.interactionMode = 'Pan';
+        viewer.initialRenderPages = 5;
+      }
+    }, [isMounted]);
+
     // Handle window resize to ensure the viewer container updates correctly
     useEffect(() => {
       const handleResize = () => {
@@ -324,8 +391,6 @@ const SyncfusionPdfViewer = memo(forwardRef<SyncfusionPdfViewerHandle, Syncfusio
     const toolbarSettings = useMemo<any>(() => ({
       showTooltip: true,
       toolbarItems: [
-        "SelectionTool",
-        "SearchOption",
         {
           id: "IssueBtn",
           text: "Create New Issue",
@@ -390,11 +455,15 @@ const SyncfusionPdfViewer = memo(forwardRef<SyncfusionPdfViewerHandle, Syncfusio
         enableNavigationToolbar={showToolbar}
         enableDownload={false}
         enablePrint={showToolbar}
-        enableTextSearch={true}
+        enableTextSearch={false}
         enableAnnotation={enableAnnotation}
         enableFormFields={false}
+        enableFormDesigner={false}
+        enableHyperlink={false}
+        enableBookmark={false}
         minZoom={10}
         maxZoom={400}
+        enableZoomOptimization={true}
         toolbarSettings={toolbarSettings}
         toolbarClick={onToolbarClick}
         documentLoad={handleDocumentLoad}
@@ -403,6 +472,7 @@ const SyncfusionPdfViewer = memo(forwardRef<SyncfusionPdfViewerHandle, Syncfusio
         annotationAdd={onAnnotationAdd}
         annotationSelect={onAnnotationSelect}
         annotationRemove={onAnnotationRemove}
+        tileRenderingSettings={{ enableTileRendering: false }}
       >
         <Inject
           services={[
@@ -410,14 +480,7 @@ const SyncfusionPdfViewer = memo(forwardRef<SyncfusionPdfViewerHandle, Syncfusio
             Magnification,
             Navigation,
             Annotation,
-            LinkAnnotation,
-            BookmarkView,
             ThumbnailView,
-            Print,
-            TextSelection,
-            TextSearch,
-            FormFields,
-            FormDesigner,
           ]}
         />
       </PdfViewerComponent>

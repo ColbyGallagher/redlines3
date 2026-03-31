@@ -74,6 +74,7 @@ type CreateProjectResponse = {
     id: string
     project_name: string
     project_number: string
+    slug: string | null
     project_location: string | null
     status: string | null
     parent_project: string | null
@@ -217,7 +218,7 @@ export function CreateProjectWizard({
 
       setOpen(false)
       resetWizard()
-      router.push(`/projects/${result.project.id}?created=1`)
+      router.push(`/${result.project.slug || result.project.id}?created=1`)
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Failed to create project."

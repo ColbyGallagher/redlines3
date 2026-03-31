@@ -88,7 +88,7 @@ export async function createIssueFromAnnotations(data: CreateIssueFromAnnotation
         revalidateTag("issues")
         revalidateTag("projects")
         revalidatePath(`/projects/${data.projectId}`)
-        revalidatePath(`/reviews/${data.reviewId}`)
+        revalidatePath('/reviews', 'layout')
         return { message: "Success", issue: newIssue }
     } catch (error) {
         console.error("Unexpected error creating issue:", error)
@@ -324,7 +324,7 @@ export async function uploadIssueSnapshot(
 
         revalidateTag("issues")
         revalidatePath(`/projects/${projectId}`)
-        revalidatePath(`/reviews/${reviewId}`)
+        revalidatePath('/reviews', 'layout')
 
         return { success: true }
     } catch (error) {

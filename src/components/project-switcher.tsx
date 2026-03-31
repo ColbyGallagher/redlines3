@@ -1,4 +1,4 @@
-﻿"use client"
+"use client"
 
 import * as React from "react"
 import { Check, ChevronDown } from "lucide-react"
@@ -15,6 +15,7 @@ import { SidebarMenuButton } from "@/components/ui/sidebar"
 
 type Project = {
   id: string
+  slug: string
   name: string
 }
 
@@ -43,11 +44,11 @@ export function ProjectSwitcher({
   const disabled = loading || Boolean(error)
 
   const handleProjectSelect = React.useCallback(
-    (projectId: string) => {
-      if (!projectId || projectId === activeProjectId) {
+    (project: Project) => {
+      if (!project.id || project.id === activeProjectId) {
         return
       }
-      void router.push(`/projects/${projectId}`)
+      void router.push(`/${project.slug}`)
     },
     [activeProjectId, router],
   )
@@ -91,7 +92,7 @@ export function ProjectSwitcher({
             projects.map((project) => (
               <DropdownMenuItem
                 key={project.id}
-                onSelect={() => handleProjectSelect(project.id)}
+                onSelect={() => handleProjectSelect(project)}
                 className="flex items-center justify-between gap-2 truncate text-sm"
               >
                 <span className="truncate">{project.name}</span>

@@ -34,6 +34,7 @@ import { Search } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ClickToScroll } from "@/components/dashboard/click-to-scroll"
 import { DashboardActions } from "@/components/dashboard/dashboard-actions"
+import { ActiveProjectTracker } from "@/components/projects/active-project-tracker"
 
 export const dynamic = "force-dynamic"
 
@@ -49,6 +50,7 @@ export default async function Page() {
 
   return (
     <div className="flex flex-1 flex-col">
+      <ActiveProjectTracker projectId={undefined} />
       <header className="flex h-16 shrink-0 items-center gap-2 border-b transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
           <div className="flex w-full items-center justify-between gap-4 px-4">
             <div className="flex items-center gap-2">
@@ -111,7 +113,7 @@ export default async function Page() {
                           .map((summary) => (
                             <div key={summary.project.id} className="flex items-center justify-between gap-2 text-sm">
                               <Link 
-                                href={`/projects/${summary.project.id}`}
+                                href={`/${summary.project.slug}`}
                                 className="font-medium hover:underline truncate"
                               >
                                 {summary.project.projectName}
@@ -162,7 +164,7 @@ export default async function Page() {
                             <div key={review.id} className="flex items-center justify-between gap-2 text-sm">
                               <div className="flex flex-col truncate">
                                 <Link 
-                                  href={`/reviews/${review.id}`}
+                                  href={`/${review.project?.slug ?? 'unknown'}/${review.slug}`}
                                   className="font-medium hover:underline truncate"
                                 >
                                   {review.reviewName}

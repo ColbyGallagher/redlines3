@@ -47,24 +47,6 @@ function formatPlural(count: number, singular: string, plural: string) {
 export function ProjectSummaryHeader({ summary, actions, successMessage }: ProjectSummaryHeaderProps) {
   const lastUpdatedLabel = formatLastUpdated(summary.lastUpdated)
 
-  const metricsCards = [
-    {
-      title: "Reviews",
-      value: summary.metrics.totalReviews.toString(),
-      description: `${formatPlural(summary.metrics.upcomingReviews, "upcoming review", "upcoming reviews")} · ${formatPlural(summary.metrics.overdueReviews, "overdue", "overdue")}`,
-    },
-    {
-      title: "Issues",
-      value: summary.metrics.totalIssues.toString(),
-      description: `${formatPlural(summary.metrics.openIssues, "open issue", "open issues")} · ${formatPlural(summary.metrics.highPriorityIssues, "high priority", "high priority")}`,
-    },
-    {
-      title: "Health",
-      value: `${summary.metrics.longOpenIssues}`,
-      description: `${formatPlural(summary.metrics.longOpenIssues, "issue", "issues")} open 14+ days`,
-    },
-  ]
-
   return (
     <div className="border-b bg-background">
       <div className="flex flex-col gap-6 p-6 pb-4">
@@ -115,22 +97,6 @@ export function ProjectSummaryHeader({ summary, actions, successMessage }: Proje
             </div>
           </div>
         </header>
-
-        <Separator />
-
-        <section className="grid gap-4 md:grid-cols-3">
-          {metricsCards.map((metric) => (
-            <Card key={metric.title}>
-              <CardHeader className="space-y-1">
-                <CardTitle className="text-base font-medium">{metric.title}</CardTitle>
-                <CardDescription>{metric.description}</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className="text-3xl font-semibold">{metric.value}</p>
-              </CardContent>
-            </Card>
-          ))}
-        </section>
       </div>
     </div>
   )

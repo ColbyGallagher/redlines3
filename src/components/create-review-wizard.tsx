@@ -34,6 +34,7 @@ type ProjectOption = {
   id: string
   name: string
   code: string
+  slug: string | null
 }
 
 type ReviewUpload = {
@@ -212,7 +213,7 @@ export function CreateReviewWizard({
       try {
         const { data, error } = await supabase
           .from("projects")
-          .select("id, project_name, project_number")
+          .select("id, project_name, project_number, slug")
           .order("project_name", { ascending: true })
 
         if (!isMounted) return
@@ -225,6 +226,7 @@ export function CreateReviewWizard({
           id: project.id,
           name: project.project_name ?? "Untitled project",
           code: project.project_number ?? "",
+          slug: project.slug,
         }))
 
         setProjects(mapped)
@@ -474,7 +476,7 @@ export function CreateReviewWizard({
       })
 
       const result = (await response.json().catch(() => ({}))) as {
-        review?: { id?: string }
+        review?: { id?: string; slug?: string }
         error?: string
       }
 
@@ -493,8 +495,10 @@ export function CreateReviewWizard({
       setOpen(false)
       resetWizard()
 
-      if (result.review?.id) {
-        router.push(`/reviews/${result.review.id}`)
+      if (result.review?.slug) {
+        router.push(`/${currentProject?.slug || formState.projectId}/${result.review.slug}`)
+      } else if (result.review?.id) {
+        router.push(`/${currentProject?.slug || formState.projectId}/${result.review.id}`)
       }
     } catch (error) {
       const message =

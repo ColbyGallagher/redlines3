@@ -5,7 +5,8 @@ import { ChevronLeft } from "lucide-react"
 import { ProjectSettingsForm } from "@/components/projects/project-settings-form"
 import { IssueFieldsSettings } from "@/components/projects/issue-fields-settings"
 import { WorkflowSettings } from "@/components/projects/workflow-settings"
-import { getProjectSummaryById } from "@/lib/data/projects"
+import { ProjectUsersSettings } from "@/components/projects/project-users-settings"
+import { getProjectSummaryBySlug } from "@/lib/data/projects"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
@@ -19,26 +20,27 @@ import {
 
 type ProjectSettingsPageProps = {
     params: Promise<{
-        id: string
+        projectSlug: string
     }>
 }
 
 export default async function ProjectSettingsPage({ params }: ProjectSettingsPageProps) {
-    const { id } = await params
-    const summary = await getProjectSummaryById(id)
+    const { projectSlug } = await params
+    const summary = await getProjectSummaryBySlug(projectSlug)
 
     if (!summary) {
         redirect("/projects")
     }
 
     const { settings } = summary
+    const id = summary.project.id
 
     return (
         <div className="flex flex-1 flex-col">
             <header className="border-b bg-card px-6 py-4">
                 <div className="flex items-center gap-4">
                     <Button variant="ghost" size="icon" asChild className="-ml-2">
-                        <Link href={`/projects/${id}`}>
+                        <Link href={`/${projectSlug}`}>
                             <ChevronLeft className="size-5" />
                             <span className="sr-only">Back to project</span>
                         </Link>
@@ -55,7 +57,7 @@ export default async function ProjectSettingsPage({ params }: ProjectSettingsPag
                                 </BreadcrumbItem>
                                 <BreadcrumbSeparator />
                                 <BreadcrumbItem>
-                                    <BreadcrumbLink href={`/projects/${id}`}>{summary.project.projectName}</BreadcrumbLink>
+                                    <BreadcrumbLink href={`/${projectSlug}`}>{summary.project.projectName}</BreadcrumbLink>
                                 </BreadcrumbItem>
                                 <BreadcrumbSeparator />
                                 <BreadcrumbItem>
@@ -78,6 +80,7 @@ export default async function ProjectSettingsPage({ params }: ProjectSettingsPag
                         <TabsList className="bg-muted/50 p-1">
                             <TabsTrigger value="general">General</TabsTrigger>
                             <TabsTrigger value="workflow">Workflow</TabsTrigger>
+                            <TabsTrigger value="users">Users</TabsTrigger>
                             <TabsTrigger value="fields">Issue Fields</TabsTrigger>
                         </TabsList>
 
@@ -87,6 +90,10 @@ export default async function ProjectSettingsPage({ params }: ProjectSettingsPag
 
                         <TabsContent value="workflow">
                             <WorkflowSettings projectId={id} />
+                        </TabsContent>
+
+                        <TabsContent value="users">
+                            <ProjectUsersSettings projectId={id} members={summary.members} />
                         </TabsContent>
 
                         <TabsContent value="fields">

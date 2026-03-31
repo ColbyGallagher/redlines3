@@ -28,6 +28,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { getProjectSummaries } from "@/lib/data/projects"
+import { ActiveProjectTracker } from "@/components/projects/active-project-tracker"
 
 export const dynamic = "force-dynamic"
 
@@ -56,6 +57,7 @@ export default async function ProjectsPage() {
 
   return (
     <div className="flex flex-1 flex-col">
+      <ActiveProjectTracker projectId={undefined} />
       <header className="flex h-16 shrink-0 items-center gap-2 border-b transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
         <div className="flex w-full items-center justify-between gap-4 px-4">
           <div className="flex items-center gap-2">
@@ -111,7 +113,7 @@ export default async function ProjectsPage() {
                     <TableRow key={summary.project.id}>
                       <TableCell className="font-medium">
                         <Link
-                          href={`/projects/${summary.project.id}`}
+                          href={`/${summary.project.slug || summary.project.id}`}
                           className="hover:text-primary"
                         >
                           {summary.project.projectName}
@@ -128,7 +130,7 @@ export default async function ProjectsPage() {
                       <TableCell>{formatDate(summary.lastUpdated)}</TableCell>
                       <TableCell className="text-right">
                         <Button asChild size="sm" variant="ghost">
-                          <Link href={`/projects/${summary.project.id}`}>View</Link>
+                          <Link href={`/${summary.project.slug || summary.project.id}`}>View</Link>
                         </Button>
                       </TableCell>
                     </TableRow>

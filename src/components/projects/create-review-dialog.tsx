@@ -27,10 +27,11 @@ import {
 
 type CreateReviewDialogProps = {
     projectId: string
+    projectSlug?: string
     milestones: string[]
 }
 
-export function CreateReviewDialog({ projectId, milestones }: CreateReviewDialogProps) {
+export function CreateReviewDialog({ projectId, projectSlug, milestones }: CreateReviewDialogProps) {
     const router = useRouter()
     const [open, setOpen] = React.useState(false)
     const [isSubmitting, setIsSubmitting] = React.useState(false)
@@ -81,14 +82,17 @@ export function CreateReviewDialog({ projectId, milestones }: CreateReviewDialog
                 throw new Error(json.error ?? "Failed to create review")
             }
 
+            const reviewSlug = json.review?.slug
             const reviewId = json.review?.id
 
             toast.success("Review created successfully.")
             setOpen(false)
             resetForm()
 
-            if (reviewId) {
-                router.push(`/reviews/${reviewId}`)
+            if (reviewSlug && projectSlug) {
+                router.push(`/${projectSlug}/${reviewSlug}`)
+            } else if (reviewId) {
+                router.push(`/${projectSlug || projectId}/${reviewId}`)
             } else {
                 router.refresh()
             }

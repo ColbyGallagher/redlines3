@@ -4,40 +4,48 @@ import { notFound } from "next/navigation"
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb"
 import { PDFMarkupViewerClient } from "@/components/reviews/pdf-markup-client-wrapper"
 import { IFCModelViewerClient } from "@/components/reviews/ifc-model-client-wrapper"
-import { getAnnotationsForDocument, getChildDocuments, getDocumentForReview, getReviewDetailById } from "@/lib/data/reviews"
+import { ActiveProjectTracker } from "@/components/projects/active-project-tracker"
+import { getAnnotationsForDocument, getChildDocuments, getDocumentForReview, getReviewDetailBySlug } from "@/lib/data/reviews"
 
 type ReviewDocumentPageProps = {
   params: Promise<{
-    id: string
+    projectSlug: string
+    reviewSlug: string
     docId: string
   }>
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>
 }
 
 export default async function ReviewDocumentPage({ params, searchParams }: ReviewDocumentPageProps) {
-  const { id, docId } = await params
+  const { projectSlug, reviewSlug, docId } = await params
   const { page, annotationId } = await searchParams
   const initialPage = typeof page === "string" ? parseInt(page, 10) : undefined
   const initialAnnotationId = typeof annotationId === "string" ? annotationId : undefined
 
-  const [review, document, initialAnnotations, childDocuments] = await Promise.all([
-    getReviewDetailById(id),
-    getDocumentForReview(id, docId),
+  const review = await getReviewDetailBySlug(reviewSlug)
+
+  if (!review || review.project.slug !== projectSlug) {
+    notFound()
+  }
+
+  const [document, initialAnnotations, childDocuments] = await Promise.all([
+    getDocumentForReview(review.id, docId),
     getAnnotationsForDocument(docId),
     getChildDocuments(docId)
   ])
 
-  if (!review || !document) {
+  if (!document) {
     notFound()
   }
 
   return (
     <div className="flex h-screen flex-col gap-4 p-4 overflow-hidden">
+      <ActiveProjectTracker projectId={review.project.id} />
       <Breadcrumb className="text-sm">
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
-              <Link href={`/projects/${review.project.id}`}>
+              <Link href={`/${projectSlug}`}>
                 {review.project.projectName || "Project"}
               </Link>
             </BreadcrumbLink>
@@ -45,7 +53,7 @@ export default async function ReviewDocumentPage({ params, searchParams }: Revie
           <BreadcrumbSeparator />
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
-              <Link href={`/reviews/${review.id}`}>{review.reviewName}</Link>
+              <Link href={`/${projectSlug}/${review.slug}`}>{review.reviewName}</Link>
             </BreadcrumbLink>
           </BreadcrumbItem>
           <BreadcrumbSeparator />

@@ -163,10 +163,10 @@ export const columns: ColumnDef<ProjectSummary>[] = [
           <DropdownMenuContent align="end" className="w-48">
             <DropdownMenuLabel>Actions</DropdownMenuLabel>
             <DropdownMenuItem asChild>
-              <Link href={`/projects/${project.id}`}>View dashboard</Link>
+              <Link href={`/${project.slug}`}>View dashboard</Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
-              <Link href={`/projects/${project.id}/settings`}>Settings</Link>
+              <Link href={`/${project.slug}/settings`}>Settings</Link>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem>Archive project</DropdownMenuItem>

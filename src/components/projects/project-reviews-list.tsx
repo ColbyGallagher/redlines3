@@ -369,7 +369,7 @@ export function ProjectReviewsList({ summary, isAdmin }: ProjectReviewsListProps
             </Tabs>
 
             <div className="flex items-center gap-2">
-              <CreateReviewDialog projectId={summary.project.id} milestones={milestones} />
+              {isAdmin && <CreateReviewDialog projectId={summary.project.id} projectSlug={summary.project.slug || summary.project.id} milestones={milestones} />}
               <Button variant="ghost" size="sm">
                 View all
                 <ArrowUpRight className="ml-1 size-4" />
@@ -479,7 +479,7 @@ export function ProjectReviewsList({ summary, isAdmin }: ProjectReviewsListProps
                             return (
                               <TableCell key={columnId}>
                                 <Link
-                                  href={`/reviews/${review.id}`}
+                                  href={`/${summary.project.slug || summary.project.id}/${review.slug}`}
                                   className="font-medium hover:text-primary transition-colors block"
                                 >
                                   {review.reviewName}
@@ -659,12 +659,13 @@ export function ProjectReviewsList({ summary, isAdmin }: ProjectReviewsListProps
               reviews={filteredAndSortedReviews} 
               phases={summary.settings.phases || []}
               projectId={summary.project.id}
+              projectSlug={summary.project.slug || summary.project.id}
               isAdmin={isAdmin}
               isPending={isPending}
               onUpdate={handleUpdate}
             />
           ) : (
-            <TimelineView reviews={filteredAndSortedReviews} />
+            <TimelineView reviews={filteredAndSortedReviews} projectSlug={summary.project.slug || summary.project.id} />
           )}
         </CardContent>
       </Card>
@@ -693,14 +694,16 @@ function KanbanBoard({
   projectId, 
   isAdmin, 
   isPending,
-  onUpdate 
+  onUpdate,
+  projectSlug
 }: { 
   reviews: ProjectReviewSummary[], 
   phases: any[], 
   projectId: string,
   isAdmin?: boolean,
   isPending: boolean,
-  onUpdate: (reviewId: string, field: any, value: string, reviewName: string, skipConfirm?: boolean) => void
+  onUpdate: (reviewId: string, field: any, value: string, reviewName: string, skipConfirm?: boolean) => void,
+  projectSlug: string
 }) {
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
 
@@ -776,6 +779,7 @@ function KanbanBoard({
                 columnId={column.id}
                 isAdmin={isAdmin}
                 isPending={isPending}
+                projectSlug={projectSlug}
               />
             ))}
             {groupedReviews[column.id]?.length === 0 && (
@@ -792,12 +796,14 @@ function KanbanCard({
   review, 
   columnId,
   isAdmin,
-  isPending 
+  isPending,
+  projectSlug
 }: { 
   review: ProjectReviewSummary, 
   columnId: string,
   isAdmin?: boolean,
-  isPending: boolean
+  isPending: boolean,
+  projectSlug: string
 }) {
   const [isDragging, setIsDragging] = useState(false);
 
@@ -837,7 +843,7 @@ function KanbanCard({
             {review.state || "Active"}
           </Badge>
         </div>
-        <Link href={`/reviews/${review.id}`} className="block">
+        <Link href={`/${projectSlug}/${review.slug}`} className="block">
           <h4 className="text-sm font-bold leading-tight group-hover/card:text-primary transition-colors line-clamp-2">
             {review.reviewName}
           </h4>
@@ -882,7 +888,7 @@ function KanbanCard({
   );
 }
 
-function TimelineView({ reviews }: { reviews: ProjectReviewSummary[] }) {
+function TimelineView({ reviews, projectSlug }: { reviews: ProjectReviewSummary[], projectSlug: string }) {
   const sortedReviews = useMemo(() => {
     return [...reviews].sort((a, b) => {
       if (!a.dueDate) return 1;
@@ -951,7 +957,7 @@ function TimelineView({ reviews }: { reviews: ProjectReviewSummary[] }) {
           
           <div className="grid gap-3">
             {groups[groupKey].map(review => (
-              <TimelineCard key={review.id} review={review} />
+              <TimelineCard key={review.id} review={review} projectSlug={projectSlug} />
             ))}
           </div>
         </div>
@@ -960,7 +966,7 @@ function TimelineView({ reviews }: { reviews: ProjectReviewSummary[] }) {
   );
 }
 
-function TimelineCard({ review }: { review: ProjectReviewSummary }) {
+function TimelineCard({ review, projectSlug }: { review: ProjectReviewSummary, projectSlug: string }) {
   return (
     <Card className="hover:shadow-md transition-all border-muted group/card bg-card/50">
       <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -978,7 +984,7 @@ function TimelineCard({ review }: { review: ProjectReviewSummary }) {
           </Badge>
           
           <div className="space-y-0.5 overflow-hidden">
-            <Link href={`/reviews/${review.id}`} className="block">
+            <Link href={`/${projectSlug}/${review.slug}`} className="block">
               <h4 className="text-sm font-bold group-hover/card:text-primary transition-colors truncate">
                 {review.reviewName}
               </h4>
@@ -1007,7 +1013,7 @@ function TimelineCard({ review }: { review: ProjectReviewSummary }) {
             </Avatar>
           </div>
           
-          <Link href={`/reviews/${review.id}`} className="text-muted-foreground hover:text-primary shrink-0">
+          <Link href={`/${projectSlug}/${review.slug}`} className="text-muted-foreground hover:text-primary shrink-0">
             <ArrowUpRight className="size-4" />
           </Link>
         </div>

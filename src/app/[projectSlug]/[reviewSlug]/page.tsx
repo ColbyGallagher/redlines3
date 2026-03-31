@@ -1,19 +1,20 @@
 import { notFound } from "next/navigation"
 
 import { ReviewDetailsView } from "@/components/reviews/review-details-view"
-import { getReviewDetailById } from "@/lib/data/reviews"
+import { getReviewDetailBySlug } from "@/lib/data/reviews"
 import { createServerSupabaseClient } from "@/lib/supabase/server"
 import { Button } from "@/components/ui/button"
+import { ActiveProjectTracker } from "@/components/projects/active-project-tracker"
 
 type ReviewPageProps = {
-  params: Promise<{ id: string }>
+  params: Promise<{ projectSlug: string, reviewSlug: string }>
 }
 
 export default async function ReviewPage({ params }: ReviewPageProps) {
-  const { id } = await params
-  const review = await getReviewDetailById(id)
+  const { projectSlug, reviewSlug } = await params
+  const review = await getReviewDetailBySlug(reviewSlug)
 
-  if (!review) {
+  if (!review || review.project.slug !== projectSlug) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
         <h1 className="text-2xl font-bold">Review not found or access restricted</h1>
@@ -52,7 +53,17 @@ export default async function ReviewPage({ params }: ReviewPageProps) {
 
   const isAdmin = canEditLifecycle
 
-  // 3. Fetch project milestones for inline editing
+  // 3. Fetch project members and their roles for the Add Reviewer dialog
+  const { data: projectMemberData } = await (supabase.from("project_users") as any)
+    .select("user_id, role")
+    .eq("project_id", review.project.id)
+  
+  const projectMemberRoles = (projectMemberData || []).reduce((acc: Record<string, string>, curr: any) => {
+    acc[curr.user_id] = curr.role
+    return acc
+  }, {})
+
+  // 4. Fetch project milestones for inline editing
   const { data: milestoneData } = await (supabase.from("project_milestones") as any)
     .select("name")
     .eq("project_id", review.project.id)
@@ -60,6 +71,15 @@ export default async function ReviewPage({ params }: ReviewPageProps) {
   
   const availableMilestones = (milestoneData || []).map((m: any) => m.name)
 
-  return <ReviewDetailsView review={review} isAdmin={isAdmin} availableMilestones={availableMilestones} />
+  return (
+    <>
+      <ActiveProjectTracker projectId={review.project.id} />
+      <ReviewDetailsView 
+        review={review} 
+        isAdmin={isAdmin} 
+        availableMilestones={availableMilestones} 
+        projectMemberRoles={projectMemberRoles}
+      />
+    </>
+  )
 }
-
