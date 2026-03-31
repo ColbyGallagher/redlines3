@@ -142,31 +142,39 @@ export function ProjectSettingsForm({ projectId }: ProjectSettingsFormProps) {
     const isDirty = React.useMemo(() => {
         if (!settings || !formState) return false
 
-        const compareArrays = (a: string[], b: string[]) => {
-            if (a.length !== b.length) return false
-            return a.every((val, idx) => val === b[idx])
+        const compareArrays = (a: any[] | undefined | null, b: any[] | undefined | null) => {
+            const arrA = a || []
+            const arrB = b || []
+            if (arrA.length !== arrB.length) return false
+            return arrA.every((val, idx) => val === arrB[idx])
         }
 
         const isReviewTimesEqual = () => {
-            if (formState.defaultReviewTimes.length !== settings.defaultReviewTimes.length) return false
-            return formState.defaultReviewTimes.every((t, i) =>
-                t.stage === settings.defaultReviewTimes[i].stage &&
-                t.days === settings.defaultReviewTimes[i].days
+            const timesA = formState.defaultReviewTimes || []
+            const timesB = settings.defaultReviewTimes || []
+            if (timesA.length !== timesB.length) return false
+            return timesA.every((t, i) =>
+                t.stage === timesB[i].stage &&
+                t.days === timesB[i].days
             )
         }
 
         const isResponsePeriodsEqual = () => {
-            if (formState.defaultResponsePeriods.length !== settings.defaultResponsePeriods.length) return false
-            return formState.defaultResponsePeriods.every((p, i) =>
-                p.role === settings.defaultResponsePeriods[i].role &&
-                p.days === settings.defaultResponsePeriods[i].days
+            const periodsA = formState.defaultResponsePeriods || []
+            const periodsB = settings.defaultResponsePeriods || []
+            if (periodsA.length !== periodsB.length) return false
+            return periodsA.every((p, i) =>
+                p.role === periodsB[i].role &&
+                p.days === periodsB[i].days
             )
         }
 
         const isExtractionSetupsEqual = () => {
-            if (formState.extraction_setups.length !== (settings.extraction_setups?.length || 0)) return false
-            return formState.extraction_setups.every((s, i) => {
-                const other = settings.extraction_setups![i]
+            const setupsA = formState.extraction_setups || []
+            const setupsB = settings.extraction_setups || []
+            if (setupsA.length !== setupsB.length) return false
+            return setupsA.every((s, i) => {
+                const other = setupsB[i]
                 return s.id === other.id && s.name === other.name && JSON.stringify(s.settings) === JSON.stringify(other.settings)
             })
         }
@@ -298,6 +306,10 @@ export function ProjectSettingsForm({ projectId }: ProjectSettingsFormProps) {
                         suitabilities: formState.suitabilities,
                         extraction_setups: formState.extraction_setups,
                         companies: formState.companies,
+                        defaultReviewTimes: formState.defaultReviewTimes,
+                        defaultResponsePeriods: formState.defaultResponsePeriods,
+                        packages: formState.packages,
+                        classifications: formState.classifications,
                     },
                 }),
             })

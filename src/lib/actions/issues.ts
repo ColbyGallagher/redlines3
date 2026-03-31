@@ -125,6 +125,24 @@ export async function updateIssue(issueId: string, projectId: string, updates: P
 
         if (memberError) throw memberError
 
+        let userRole = (projectMember as any)?.role?.toLowerCase() || "viewer"
+        const adminRoles = ["admin", "project admin", "organization admin", "org admin", "developer"]
+        let isSystemAdmin = adminRoles.includes(userRole)
+
+        // If not a project admin, check for global organization roles
+        if (!isSystemAdmin) {
+            const { data: orgRoles } = await (supabase.from("user_companies" as any) as any)
+                .select(`roles:role_id (name)`)
+                .eq("user_id", user.id)
+                .eq("active", true)
+            
+            const globalRoles = (orgRoles || []).map((uc: any) => uc.roles?.name?.toLowerCase()).filter(Boolean)
+            if (globalRoles.includes('org admin') || globalRoles.includes('admin') || globalRoles.includes('developer')) {
+                isSystemAdmin = true
+                userRole = globalRoles.includes('developer') ? 'developer' : 'admin'
+            }
+        }
+
         // 2. Check permissions for the current review phase
         // Get the review's current phase link
         const { data: review, error: reviewError } = await (supabase.from("reviews" as any) as any)
@@ -157,12 +175,8 @@ export async function updateIssue(issueId: string, projectId: string, updates: P
             }
 
             if (!phaseError && phaseData) {
-                const userRole = (projectMember as any)?.role?.toLowerCase() || "viewer"
                 const phasePerms = (phaseData as any).permissions || {}
                 const rolePerms = phasePerms[userRole] || phasePerms[userRole.replace(" ", "_")] || []
-                
-                const adminRoles = ["admin", "project admin", "organization admin", "org admin", "developer"]
-                const isSystemAdmin = adminRoles.includes(userRole)
 
                 if (!isSystemAdmin) {
                     const canEditOthers = rolePerms.includes("edit_others")
@@ -189,12 +203,7 @@ export async function updateIssue(issueId: string, projectId: string, updates: P
                 .single()
 
             if (!stateError && stateData) {
-                const userRole = (projectMember as any)?.role?.toLowerCase() || "viewer"
                 const allowedRoles = (stateData as any).allowed_roles || ["admin"]
-                
-                const adminRoles = ["admin", "project admin", "organization admin", "org admin", "developer"]
-                const isSystemAdmin = adminRoles.includes(userRole)
-
                 if (!isSystemAdmin && !allowedRoles.map((r: string) => r.toLowerCase()).includes(userRole)) {
                     throw new Error("Unauthorized: Your role cannot edit issues in this state.")
                 }
@@ -239,9 +248,23 @@ export async function bulkUpdateIssues(issueIds: string[], projectId: string, up
 
         if (memberError) throw memberError
 
-        const userRole = (projectMember as any)?.role?.toLowerCase() || "viewer"
+        let userRole = (projectMember as any)?.role?.toLowerCase() || "viewer"
         const adminRoles = ["admin", "project admin", "organization admin", "org admin", "developer"]
-        const isSystemAdmin = adminRoles.includes(userRole)
+        let isSystemAdmin = adminRoles.includes(userRole)
+
+        // If not a project admin, check for global organization roles
+        if (!isSystemAdmin) {
+            const { data: orgRoles } = await (supabase.from("user_companies" as any) as any)
+                .select(`roles:role_id (name)`)
+                .eq("user_id", user.id)
+                .eq("active", true)
+            
+            const globalRoles = (orgRoles || []).map((uc: any) => uc.roles?.name?.toLowerCase()).filter(Boolean)
+            if (globalRoles.includes('org admin') || globalRoles.includes('admin') || globalRoles.includes('developer')) {
+                isSystemAdmin = true
+                userRole = globalRoles.includes('developer') ? 'developer' : 'admin'
+            }
+        }
 
         if (isSystemAdmin) {
             // Bulk update for admins

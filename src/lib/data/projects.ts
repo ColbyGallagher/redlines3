@@ -161,6 +161,8 @@ export type ProjectIssueSummary = {
   reviewId: string
   reviewSlug: string
   reviewName: string
+  reviewSpecificStatus: string | null
+  reviewPhaseId: string | null
   documentId: string | null
   pageNumber: number | null
   snapshotPath: string | null
@@ -450,6 +452,8 @@ function calculateIssueSummaries(today: Date, reviews: NormalizedReview[], membe
         reviewId: issue.reviewId,
         reviewSlug: review.slug,
         reviewName: review.reviewName,
+        reviewSpecificStatus: review.specificStatus ?? null,
+        reviewPhaseId: review.phaseId ?? null,
         projectSlug: review.project.slug,
         projectName: review.project.projectName,
         documentId: issue.documentId ?? null,
@@ -842,7 +846,7 @@ export async function updateProjectSettings(projectId: string, settings: Project
     const { error: delSuitabilitiesErr } = await (supabase as any).from("project_suitabilities").delete().eq("project_id", projectId)
     if (delSuitabilitiesErr) throw new Error(delSuitabilitiesErr.message)
 
-    if (settings.suitabilities.length) {
+    if (settings.suitabilities && settings.suitabilities.length) {
       const { error: insSuitabilitiesErr } = await (supabase as any).from("project_suitabilities").insert(
         settings.suitabilities.map(name => ({ project_id: projectId, name }))
       )
@@ -853,7 +857,7 @@ export async function updateProjectSettings(projectId: string, settings: Project
     const { error: delStagesErr } = await (supabase as any).from("project_review_stages").delete().eq("project_id", projectId)
     if (delStagesErr) throw new Error(delStagesErr.message)
 
-    if (settings.defaultReviewTimes.length) {
+    if (settings.defaultReviewTimes && settings.defaultReviewTimes.length) {
       const { error: insStagesErr } = await (supabase as any).from("project_review_stages").insert(
         settings.defaultReviewTimes.map(s => ({
           project_id: projectId,
@@ -868,7 +872,7 @@ export async function updateProjectSettings(projectId: string, settings: Project
     const { error: delRolesErr } = await (supabase as any).from("project_response_roles").delete().eq("project_id", projectId)
     if (delRolesErr) throw new Error(delRolesErr.message)
 
-    if (settings.defaultResponsePeriods.length) {
+    if (settings.defaultResponsePeriods && settings.defaultResponsePeriods.length) {
       const { error: insRolesErr } = await (supabase as any).from("project_response_roles").insert(
         settings.defaultResponsePeriods.map(r => ({
           project_id: projectId,

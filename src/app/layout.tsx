@@ -48,6 +48,7 @@ export default function RootLayout({
           </UploadProvider>
           <Toaster />
         </ThemeProvider>
+        <div id="portal" />
       </body>
     </html>
   );

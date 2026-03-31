@@ -62,6 +62,13 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
     .eq("user_id", user?.id)
     .maybeSingle()
 
+  const { data: userCompany } = await (supabase.from("user_companies") as any)
+    .select("company_id")
+    .eq("user_id", user?.id)
+    .eq("active", true)
+    .maybeSingle()
+  const userCompanyId = (userCompany as any)?.company_id
+
   const projectRole = (projectMember as any)?.role?.toLowerCase()
   const hasProjectPermission = projectRole === "admin" || projectRole === "developer"
   
@@ -169,7 +176,14 @@ export default async function ProjectDashboardPage({ params, searchParams }: Pro
         <section className="flex flex-col gap-6">
           <ProjectReviewsList summary={summary} isAdmin={isAdmin} />
           
-          <IssuesTable issues={summary.issues} summary={summary} />
+          <IssuesTable 
+            issues={summary.issues} 
+            summary={summary} 
+            currentUserId={user?.id ?? null}
+            isAdmin={isAdmin}
+            userRole={projectRole ?? "viewer"}
+            userCompanyId={userCompanyId}
+          />
 
           <section className="grid gap-4">
             <Card>
