@@ -33,6 +33,7 @@
     "@thatopen/components": "^3.3.3",
     "@thatopen/fragments": "^3.3.6",
     "@vercel/analytics": "^1.5.0",
+    "camera-controls": "^3.1.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "html-to-image": "^1.11.13",
@@ -51,6 +52,7 @@
     "recharts": "^3.8.0",
     "slugify": "^1.6.8",
     "sonner": "^2.0.7",
+    "stats.js": "^0.17.0",
     "tailwind-merge": "^3.3.1",
     "three": "^0.175.0",
     "web-ifc": "^0.0.74"
