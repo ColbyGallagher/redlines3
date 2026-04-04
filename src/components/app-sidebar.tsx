@@ -78,11 +78,18 @@ type SidebarApiResponse = {
   } | null
 }
 
-const data = {
+const data: {
+  user: {
+    name: string
+    email: string
+    avatar: string | undefined
+  }
+  teams: any[]
+} = {
   user: {
     name: "shadcn",
     email: "m@example.com",
-    avatar: "/avatars/shadcn.jpg",
+    avatar: "/redlines_logo.png",
   },
   teams: [
     {
@@ -152,7 +159,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           setUser({
             name: [payload.user.first_name, payload.user.last_name].filter(Boolean).join(" ") || "User",
             email: payload.user.email,
-            avatar: "",
+            avatar: undefined,
             roles: (payload.user as any).roles || [],
           } as any)
         }

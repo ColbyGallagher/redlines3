@@ -1,7 +1,7 @@
 import "server-only"
 
 import { createServerSupabaseClient } from "@/lib/supabase/server"
-import type { Database, ProjectMilestone, ProjectStatus, ProjectImportance, ProjectDiscipline, ProjectState, ProjectSuitability, ProjectReviewStage, ProjectResponseRole, ProjectPackage, ProjectClassification, ProjectReviewPhase } from "@/lib/db/types"
+import type { Database, ProjectMilestone, ProjectStatus, ProjectImportance, ProjectDiscipline, ProjectState, ProjectSuitability, ProjectResponseRole, ProjectPackage, ProjectClassification, ProjectReviewPhase } from "@/lib/db/types"
 import type { ReviewUser } from "./reviews"
 import { formatName, toTitleCaseFallback } from "@/lib/utils/user-utils"
 
@@ -40,7 +40,6 @@ type ProjectWithRelations = ProjectRow & {
   project_disciplines: ProjectDiscipline[] | null
   project_states: ProjectState[] | null
   project_suitabilities: ProjectSuitability[] | null
-  project_review_stages: ProjectReviewStage[] | null
   project_response_roles: ProjectResponseRole[] | null
   project_users: ProjectUserRow[] | null
   project_review_phases: ProjectReviewPhase[] | null
@@ -567,7 +566,7 @@ function deriveSettings(project: ProjectWithRelations): ProjectSettings {
     suitabilities: project.project_suitabilities ?? [],
     packages: (project as any).project_packages ?? [],
     classifications: (project as any).project_classifications ?? [],
-    defaultReviewTimes: (project.project_review_stages ?? []).map(s => ({ stage: s.stage_name, days: s.days })),
+    defaultReviewTimes: (project.project_review_phases ?? []).map(p => ({ stage: p.phase_name, days: p.duration_days })),
     defaultResponsePeriods: (project.project_response_roles ?? []).map(r => ({ role: r.role_name, days: r.days })),
     companies: (project.settings as any)?.companies ?? [],
   }
@@ -680,7 +679,7 @@ export async function getProjectSummaries(): Promise<ProjectSummary[]> {
     const supabase = await createServerSupabaseClient()
     const { data, error } = await supabase
       .from("projects")
-      .select("*, reviews(*, documents(*), issues(*, author:users!created_by_user_id(first_name, last_name))), project_milestones(*), project_statuses(*), project_importances(*), project_disciplines(*), project_states(*), project_suitabilities(*), project_review_stages(*), project_response_roles(*), project_users(*, user:users(*, user_companies(*, companies(*))), roles:roles(*)), project_packages(*), project_classifications(*), project_review_phases(*)")
+      .select("*, reviews(*, documents(*), issues(*, author:users!created_by_user_id(first_name, last_name))), project_milestones(*), project_statuses(*), project_importances(*), project_disciplines(*), project_states(*), project_suitabilities(*), project_response_roles(*), project_users(*, user:users(*, user_companies(*, companies(*))), roles:roles(*)), project_packages(*), project_classifications(*), project_review_phases(*)")
       .order("project_name")
 
     if (error) {
@@ -701,7 +700,7 @@ export async function getProjectSummaryById(projectId: string): Promise<ProjectS
     const supabase = await createServerSupabaseClient()
     const { data, error } = await supabase
       .from("projects")
-      .select("*, reviews(*, documents(*), issues(*, author:users!created_by_user_id(first_name, last_name)), review_users(*, user:users(*))), project_milestones(*), project_statuses(*), project_importances(*), project_disciplines(*), project_states(*), project_suitabilities(*), project_review_stages(*), project_response_roles(*), project_users(*, user:users(*, user_companies(*, companies(*))), roles:roles(*)), project_packages(*), project_classifications(*), project_review_phases(*)")
+      .select("*, reviews(*, documents(*), issues(*, author:users!created_by_user_id(first_name, last_name)), review_users(*, user:users(*))), project_milestones(*), project_statuses(*), project_importances(*), project_disciplines(*), project_states(*), project_suitabilities(*), project_response_roles(*), project_users(*, user:users(*, user_companies(*, companies(*))), roles:roles(*)), project_packages(*), project_classifications(*), project_review_phases(*)")
       .eq("id", projectId)
       .maybeSingle()
 
@@ -726,7 +725,7 @@ export async function getProjectSummaryBySlug(slug: string): Promise<ProjectSumm
     const supabase = await createServerSupabaseClient()
     const { data, error } = await supabase
       .from("projects")
-      .select("*, reviews(*, documents(*), issues(*), review_users(*, user:users(*))), project_milestones(*), project_statuses(*), project_importances(*), project_disciplines(*), project_states(*), project_suitabilities(*), project_review_stages(*), project_response_roles(*), project_users(*, user:users(*, user_companies(*, companies(*))), roles:roles(*)), project_packages(*), project_classifications(*), project_review_phases(*)")
+      .select("*, reviews(*, documents(*), issues(*), review_users(*, user:users(*))), project_milestones(*), project_statuses(*), project_importances(*), project_disciplines(*), project_states(*), project_suitabilities(*), project_response_roles(*), project_users(*, user:users(*, user_companies(*, companies(*))), roles:roles(*)), project_packages(*), project_classifications(*), project_review_phases(*)")
       .eq("slug", slug)
       .maybeSingle()
 
@@ -853,20 +852,6 @@ export async function updateProjectSettings(projectId: string, settings: Project
       if (insSuitabilitiesErr) throw new Error(insSuitabilitiesErr.message)
     }
 
-    // 8. Sync Review Stages
-    const { error: delStagesErr } = await (supabase as any).from("project_review_stages").delete().eq("project_id", projectId)
-    if (delStagesErr) throw new Error(delStagesErr.message)
-
-    if (settings.defaultReviewTimes && settings.defaultReviewTimes.length) {
-      const { error: insStagesErr } = await (supabase as any).from("project_review_stages").insert(
-        settings.defaultReviewTimes.map(s => ({
-          project_id: projectId,
-          stage_name: s.stage,
-          days: s.days
-        }))
-      )
-      if (insStagesErr) throw new Error(insStagesErr.message)
-    }
 
     // 9. Sync Response Roles
     const { error: delRolesErr } = await (supabase as any).from("project_response_roles").delete().eq("project_id", projectId)

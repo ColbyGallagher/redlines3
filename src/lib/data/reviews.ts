@@ -267,8 +267,17 @@ export async function getReviewSummaries(): Promise<ReviewSummary[]> {
   }
 }
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+function isValidUUID(uuid: string): boolean {
+  return UUID_REGEX.test(uuid)
+}
+
 export async function getReviewDetailById(reviewId: string): Promise<ReviewDetail | undefined> {
   try {
+    if (!isValidUUID(reviewId)) {
+      return undefined
+    }
     const supabase = await createServerSupabaseClient()
 
     const { data, error } = await supabase
@@ -316,11 +325,11 @@ export async function getReviewDetailBySlug(slug: string): Promise<ReviewDetail 
       .maybeSingle()
 
     // Fallback to searching by ID (UUID) if slug lookup fails
-    if (!data && !error) {
+    if (!data && !error && isValidUUID(slug)) {
       const fallback = await supabase
         .from("reviews")
         .select(
-        "*, project:projects(*), documents(*), issues(*), review_users(*, user:users(*, user_companies(*, companies(*)))), review_document_views(user_id, document_id)",
+          "*, project:projects(*), documents(*), issues(*), review_users(*, user:users(*, user_companies(*, companies(*)))), review_document_views(user_id, document_id)",
         )
         .eq("id", slug)
         .maybeSingle()

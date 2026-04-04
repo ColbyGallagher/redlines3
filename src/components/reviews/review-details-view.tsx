@@ -114,6 +114,20 @@ export function ReviewDetailsView({ review, isAdmin, availableMilestones = [], p
   const [isDeletingSelection, setIsDeletingSelection] = useState(false)
   const [expandedParents, setExpandedParents] = useState<string[]>([])
   
+  const parseFileSize = (size: string | undefined | null): number => {
+    if (!size) return 0
+    const match = String(size).match(/^([\d.]+)\s*(KB|MB|GB|B)?$/i)
+    if (!match) return 0
+    const value = parseFloat(match[1])
+    const unit = (match[2] || "B").toUpperCase()
+    switch (unit) {
+      case "KB": return value * 1024
+      case "MB": return value * 1024 * 1024
+      case "GB": return value * 1024 * 1024 * 1024
+      default: return value
+    }
+  }
+  
   const [timelineProgress, setTimelineProgress] = useState<ReviewTimelineProgress | null>(null)
 
   useEffect(() => {
@@ -305,6 +319,20 @@ export function ReviewDetailsView({ review, isAdmin, availableMilestones = [], p
     return Array.from(values).sort()
   }
 
+  const issuesPerDocument = useMemo(() => {
+    const counts: Record<string, number> = {}
+    for (const issue of review.issues) {
+      const documentId = issue.documentId
+      if (!documentId) {
+        continue
+      }
+
+      counts[documentId] = (counts[documentId] ?? 0) + 1
+    }
+
+    return counts
+  }, [review.issues])
+
   const filteredAndSortedDocuments = useMemo(() => {
     let docs = [...review.documents]
 
@@ -331,9 +359,43 @@ export function ReviewDetailsView({ review, isAdmin, availableMilestones = [], p
     // Apply sorting
     if (sortConfig.key && sortConfig.direction) {
       const { key, direction } = sortConfig
+      
+      const columnToProperty: Record<string, string> = {
+        name: "documentName",
+        code: "documentCode",
+        state: "state",
+        milestone: "milestone",
+        suitability: "suitability",
+        version: "version",
+        revision: "revision",
+        fileSize: "fileSize",
+        uploaded: "uploadedAt",
+        issues: "id" // handled specifically
+      }
+
+      const property = columnToProperty[key] || key
+
       docs.sort((a, b) => {
-        const valA = String((a as any)[key] || "").toLowerCase()
-        const valB = String((b as any)[key] || "").toLowerCase()
+        let valA: any
+        let valB: any
+
+        if (key === "issues") {
+          const getIssuesCount = (doc: any) => {
+            const children = review.documents.filter((d) => d.parentId === doc.id)
+            return children.reduce((acc, child) => acc + (issuesPerDocument[child.id] ?? 0), 0) + (issuesPerDocument[doc.id] ?? 0)
+          }
+          valA = getIssuesCount(a)
+          valB = getIssuesCount(b)
+        } else if (key === "fileSize") {
+          valA = parseFileSize((a as any)[property])
+          valB = parseFileSize((b as any)[property])
+        } else if (key === "uploaded") {
+          valA = new Date((a as any)[property] || 0).getTime()
+          valB = new Date((b as any)[property] || 0).getTime()
+        } else {
+          valA = String((a as any)[property] || "").toLowerCase()
+          valB = String((b as any)[property] || "").toLowerCase()
+        }
 
         if (valA < valB) return direction === "asc" ? -1 : 1
         if (valA > valB) return direction === "asc" ? 1 : -1
@@ -414,19 +476,6 @@ export function ReviewDetailsView({ review, isAdmin, availableMilestones = [], p
     selectedDocumentIds.includes(document.id),
   )
 
-  const issuesPerDocument = useMemo(() => {
-    const counts: Record<string, number> = {}
-    for (const issue of review.issues) {
-      const documentId = issue.documentId
-      if (!documentId) {
-        continue
-      }
-
-      counts[documentId] = (counts[documentId] ?? 0) + 1
-    }
-
-    return counts
-  }, [review.issues])
 
   const toggleDocumentSelection = (documentId: string) => {
     setSelectedDocumentIds((previous) =>
@@ -531,23 +580,26 @@ export function ReviewDetailsView({ review, isAdmin, availableMilestones = [], p
     switch (columnId) {
       case "name":
         return (
-          <TableCell style={{ width: columnWidths.name }} className={cn("font-medium", isChild && "pl-10")}>
-            <div className="flex items-center gap-2">
+          <TableCell 
+            style={{ width: columnWidths.name }} 
+            className={cn("font-medium relative select-none", isChild && "pl-10")}
+          >
+            <div className="flex items-center gap-2 max-w-full overflow-hidden">
               {!isChild && hasChildren && (
-                <Button variant="ghost" size="icon" className="h-6 w-6 p-0" onClick={() => toggleParentExpansion(document.id)}>
+                <Button variant="ghost" size="icon" className="h-6 w-6 p-0 shrink-0" onClick={() => toggleParentExpansion(document.id)}>
                   {isExpanded ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
                 </Button>
               )}
               {isChild && (
-                <div className="size-5 rounded bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold">
+                <div className="size-5 rounded bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold shrink-0">
                   {document.pageNumber}
                 </div>
               )}
               {hasChildren && !isChild ? (
-                <div className="flex items-center gap-2 text-primary">
-                  <Layers className="size-4" />
-                  <span>{document.documentName}</span>
-                  <Badge variant="secondary" className="text-[10px] h-4 px-1">
+                <div className="flex items-center gap-2 text-primary overflow-hidden min-w-0">
+                  <Layers className="size-4 shrink-0" />
+                  <span className="truncate">{document.documentName}</span>
+                  <Badge variant="secondary" className="text-[10px] h-4 px-1 shrink-0 whitespace-nowrap">
                     {children.length} drawings
                   </Badge>
                 </div>
@@ -555,7 +607,7 @@ export function ReviewDetailsView({ review, isAdmin, availableMilestones = [], p
                 <Link
                   href={`/reviews/${review.slug}/documents/${document.id}${isChild && document.pageNumber ? `?page=${document.pageNumber}` : ""}`}
                   prefetch={false}
-                  className={cn("text-primary hover:underline font-medium text-left", isChild && "text-xs")}
+                  className={cn("text-primary hover:underline font-medium text-left truncate min-w-0", isChild && "text-xs")}
                 >
                   {document.documentName}
                 </Link>
@@ -565,43 +617,64 @@ export function ReviewDetailsView({ review, isAdmin, availableMilestones = [], p
         )
       case "code":
         return (
-          <TableCell style={{ width: columnWidths.code }} className={cn("truncate", isChild && "text-xs")}>
+          <TableCell 
+            style={{ width: columnWidths.code }} 
+            className={cn("truncate max-w-0 overflow-hidden whitespace-nowrap", isChild && "text-xs")}
+          >
             {document.documentCode}
           </TableCell>
         )
       case "state":
         return (
-          <TableCell style={{ width: columnWidths.state }} className={cn("truncate", isChild && "text-xs")}>
+          <TableCell 
+            style={{ width: columnWidths.state }} 
+            className={cn("truncate max-w-0 overflow-hidden whitespace-nowrap", isChild && "text-xs")}
+          >
             {document.state}
           </TableCell>
         )
       case "milestone":
         return (
-          <TableCell style={{ width: columnWidths.milestone }} className={cn("truncate", isChild && "text-xs")}>
+          <TableCell 
+            style={{ width: columnWidths.milestone }} 
+            className={cn("truncate max-w-0 overflow-hidden whitespace-nowrap", isChild && "text-xs")}
+          >
             {document.milestone}
           </TableCell>
         )
       case "suitability":
         return (
-          <TableCell style={{ width: columnWidths.suitability }} className={cn("truncate", isChild && "text-xs")}>
+          <TableCell 
+            style={{ width: columnWidths.suitability }} 
+            className={cn("truncate max-w-0 overflow-hidden whitespace-nowrap", isChild && "text-xs")}
+          >
             {document.suitability}
           </TableCell>
         )
       case "version":
         return (
-          <TableCell style={{ width: columnWidths.version }} className={cn("truncate", isChild && "text-xs")}>
+          <TableCell 
+            style={{ width: columnWidths.version }} 
+            className={cn("truncate max-w-0 overflow-hidden whitespace-nowrap", isChild && "text-xs")}
+          >
             {document.version}
           </TableCell>
         )
       case "revision":
         return (
-          <TableCell style={{ width: columnWidths.revision }} className={cn("truncate", isChild && "text-xs")}>
+          <TableCell 
+            style={{ width: columnWidths.revision }} 
+            className={cn("truncate max-w-0 overflow-hidden whitespace-nowrap", isChild && "text-xs")}
+          >
             {document.revision}
           </TableCell>
         )
       case "issues":
         return (
-          <TableCell style={{ width: columnWidths.issues }} className={cn("truncate", isChild && "text-xs")}>
+          <TableCell 
+            style={{ width: columnWidths.issues }} 
+            className={cn("truncate max-w-0 overflow-hidden whitespace-nowrap", isChild && "text-xs")}
+          >
             {hasChildren && !isChild
               ? children.reduce((acc, child) => acc + (issuesPerDocument[child.id] ?? 0), 0) + (issuesPerDocument[document.id] ?? 0)
               : issuesPerDocument[document.id] ?? 0}
@@ -609,19 +682,25 @@ export function ReviewDetailsView({ review, isAdmin, availableMilestones = [], p
         )
       case "fileSize":
         return (
-          <TableCell style={{ width: columnWidths.fileSize }} className={cn("truncate", isChild && "text-xs")}>
+          <TableCell 
+            style={{ width: columnWidths.fileSize }} 
+            className={cn("truncate max-w-0 overflow-hidden whitespace-nowrap", isChild && "text-xs")}
+          >
             {formatFileSize(document.fileSize)}
           </TableCell>
         )
       case "uploaded":
         return (
-          <TableCell style={{ width: columnWidths.uploaded }} className={cn("truncate", isChild && "text-xs")}>
+          <TableCell 
+            style={{ width: columnWidths.uploaded }} 
+            className={cn("truncate max-w-0 overflow-hidden whitespace-nowrap", isChild && "text-xs")}
+          >
             {formatDate(document.uploadedAt)}
           </TableCell>
         )
       case "actions":
         return (
-          <TableCell style={{ width: columnWidths.actions }} className="text-right">
+          <TableCell style={{ width: columnWidths.actions }} className="text-right whitespace-nowrap overflow-hidden">
             {!isChild ? (
               <>
                 <Button

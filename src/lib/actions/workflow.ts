@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache"
 import { createServerSupabaseClient } from "@/lib/supabase/server"
-import type { ProjectReviewPhase } from "@/lib/db/types"
+import type { ProjectReviewPhase, ProjectWorkflow } from "@/lib/db/types"
 
 async function checkAdminPrivileges(projectId: string) {
     const supabase = await createServerSupabaseClient()
@@ -59,14 +59,107 @@ async function checkAdminPrivileges(projectId: string) {
     return { supabase, user }
 }
 
-export async function getProjectPhases(projectId: string) {
+export async function getProjectWorkflows(projectId: string) {
     try {
         const supabase = await createServerSupabaseClient()
         const { data, error } = await supabase
+            .from("project_workflows")
+            .select("*")
+            .eq("project_id", projectId)
+            .order("created_at", { ascending: true })
+
+        if (error) throw error
+
+        return { success: true, workflows: data as ProjectWorkflow[] }
+    } catch (error) {
+        console.error("Error fetching project workflows:", error)
+        return { success: false, error: error instanceof Error ? error.message : "Failed to fetch workflows" }
+    }
+}
+
+export async function createWorkflow(projectId: string, name: string, description?: string) {
+    try {
+        const { supabase } = await checkAdminPrivileges(projectId)
+
+        const { data, error } = await (supabase
+            .from("project_workflows") as any)
+            .insert({
+                project_id: projectId,
+                name: name,
+                description: description
+            })
+            .select()
+            .single()
+
+        if (error) throw error
+
+        revalidatePath(`/projects/${projectId}/settings`)
+        return { success: true, workflow: data as ProjectWorkflow }
+    } catch (error) {
+        console.error("Error creating workflow:", error)
+        return { success: false, error: error instanceof Error ? error.message : "Failed to create workflow" }
+    }
+}
+
+export async function updateWorkflow(projectId: string, workflowId: string, name: string, description?: string) {
+    try {
+        const { supabase } = await checkAdminPrivileges(projectId)
+
+        const { error } = await (supabase
+            .from("project_workflows") as any)
+            .update({
+                name: name,
+                description: description,
+                updated_at: new Date().toISOString()
+            })
+            .eq("id", workflowId)
+
+        if (error) throw error
+
+        revalidatePath(`/projects/${projectId}/settings`)
+        return { success: true }
+    } catch (error) {
+        console.error("Error updating workflow:", error)
+        return { success: false, error: error instanceof Error ? error.message : "Failed to update workflow" }
+    }
+}
+
+export async function deleteWorkflow(projectId: string, workflowId: string) {
+    try {
+        const { supabase } = await checkAdminPrivileges(projectId)
+
+        const { error } = await supabase
+            .from("project_workflows")
+            .delete()
+            .eq("id", workflowId)
+
+        if (error) throw error
+
+        revalidatePath(`/projects/${projectId}/settings`)
+        return { success: true }
+    } catch (error) {
+        console.error("Error deleting workflow:", error)
+        return { success: false, error: error instanceof Error ? error.message : "Failed to delete workflow" }
+    }
+}
+
+export async function getProjectPhases(projectId: string, workflowId?: string) {
+    try {
+        const supabase = await createServerSupabaseClient()
+        let query = supabase
             .from("project_review_phases")
             .select("*")
             .eq("project_id", projectId)
-            .order("order_index", { ascending: true })
+        
+        if (workflowId) {
+            query = query.eq("workflow_id", workflowId)
+        } else {
+            // Default to filtering for ones that belong to the "default" or first workflow if not specified?
+            // For now, if no workflowId is provided, we return phases without workflow_id if any, or just all.
+            // But ideally UI should always provide workflowId.
+        }
+
+        const { data, error } = await query.order("order_index", { ascending: true })
 
         if (error) throw error
 
@@ -77,7 +170,7 @@ export async function getProjectPhases(projectId: string) {
     }
 }
 
-export async function addPhase(projectId: string, name: string, duration: number = 5, state: "Active" | "Complete" | "Archived" = "Active") {
+export async function addPhase(projectId: string, workflowId: string, name: string, duration: number = 5, state: "Active" | "Complete" | "Archived" = "Active") {
     try {
         const { supabase } = await checkAdminPrivileges(projectId)
 
@@ -85,6 +178,7 @@ export async function addPhase(projectId: string, name: string, duration: number
             .from("project_review_phases" as any) as any)
             .select("order_index")
             .eq("project_id", projectId)
+            .eq("workflow_id", workflowId)
             .order("order_index", { ascending: false })
             .limit(1)
 
@@ -103,6 +197,7 @@ export async function addPhase(projectId: string, name: string, duration: number
             .from("project_review_phases" as any) as any)
             .insert({
                 project_id: projectId,
+                workflow_id: workflowId,
                 phase_name: name,
                 duration_days: duration,
                 order_index: nextOrderIndex,

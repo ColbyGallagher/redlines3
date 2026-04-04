@@ -2,8 +2,8 @@
 
 import * as React from "react"
 import { toast } from "sonner"
-import { getProjectPhases, addPhase, updatePhase, deletePhase } from "@/lib/actions/workflow"
-import type { ProjectReviewPhase } from "@/lib/db/types"
+import { getProjectPhases, addPhase, updatePhase, deletePhase, getProjectWorkflows, createWorkflow, updateWorkflow, deleteWorkflow } from "@/lib/actions/workflow"
+import type { ProjectReviewPhase, ProjectWorkflow } from "@/lib/db/types"
 import { WorkflowPhasesDnd } from "./workflow-phases-dnd"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -25,26 +25,51 @@ interface WorkflowSettingsProps {
 
 export function WorkflowSettings({ projectId }: WorkflowSettingsProps) {
     const [phases, setPhases] = React.useState<ProjectReviewPhase[]>([])
+    const [workflows, setWorkflows] = React.useState<ProjectWorkflow[]>([])
+    const [selectedWorkflowId, setSelectedWorkflowId] = React.useState<string | null>(null)
     const [isLoading, setIsLoading] = React.useState(true)
     const [isPending, startTransition] = React.useTransition()
     
     // Dialog states
     const [isDialogOpen, setIsDialogOpen] = React.useState(false)
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false)
+    
+    // Workflow Dialog states
+    const [isWorkflowDialogOpen, setIsWorkflowDialogOpen] = React.useState(false)
+    const [isWorkflowDeleteDialogOpen, setIsWorkflowDeleteDialogOpen] = React.useState(false)
+    const [currentWorkflow, setCurrentWorkflow] = React.useState<{ id?: string; name: string } | null>(null)
+
     const [currentItem, setCurrentItem] = React.useState<{ id?: string; phase_name: string; duration_days: number; state: "Active" | "Complete" | "Archived" } | null>(null)
     const [itemToDelete, setItemToDelete] = React.useState<{ id: string; name: string } | null>(null)
 
-    const loadPhases = React.useCallback(async () => {
-        const result = await getProjectPhases(projectId)
-        if (result.success && result.phases) {
-            setPhases(result.phases)
+    const loadWorkflowsAndPhases = React.useCallback(async () => {
+        setIsLoading(true)
+        const wfResult = await getProjectWorkflows(projectId)
+        if (wfResult.success && wfResult.workflows) {
+            setWorkflows(wfResult.workflows)
+            
+            // Set initial selected workflow if not set
+            let activeWfId = selectedWorkflowId
+            if (!activeWfId && wfResult.workflows.length > 0) {
+                activeWfId = wfResult.workflows[0].id
+                setSelectedWorkflowId(activeWfId)
+            }
+
+            if (activeWfId) {
+                const pResult = await getProjectPhases(projectId, activeWfId)
+                if (pResult.success && pResult.phases) {
+                    setPhases(pResult.phases)
+                }
+            } else {
+                setPhases([])
+            }
         }
         setIsLoading(false)
-    }, [projectId])
+    }, [projectId, selectedWorkflowId])
 
     React.useEffect(() => {
-        loadPhases()
-    }, [loadPhases])
+        loadWorkflowsAndPhases()
+    }, [loadWorkflowsAndPhases])
 
     const handleAddPhaseClick = () => {
         setCurrentItem({ phase_name: "", duration_days: 5, state: "Active" })
@@ -68,7 +93,7 @@ export function WorkflowSettings({ projectId }: WorkflowSettingsProps) {
 
     const onSavePhase = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault()
-        if (!currentItem) return
+        if (!currentItem || !selectedWorkflowId) return
 
         startTransition(async () => {
             const result = currentItem.id
@@ -77,13 +102,52 @@ export function WorkflowSettings({ projectId }: WorkflowSettingsProps) {
                     duration_days: currentItem.duration_days,
                     state: currentItem.state
                   })
-                : await addPhase(projectId, currentItem.phase_name, currentItem.duration_days, currentItem.state)
+                : await addPhase(projectId, selectedWorkflowId, currentItem.phase_name, currentItem.duration_days, currentItem.state)
 
             if (result.success) {
                 toast.success(`Successfully ${currentItem.id ? "updated" : "added"} phase`)
                 setIsDialogOpen(false)
                 setCurrentItem(null)
-                loadPhases() // Refresh list
+                loadWorkflowsAndPhases() // Refresh list
+            } else {
+                toast.error(result.error || "An error occurred")
+            }
+        })
+    }
+
+    const onSaveWorkflow = async (e: React.FormEvent<HTMLFormElement>) => {
+        e.preventDefault()
+        if (!currentWorkflow) return
+
+        startTransition(async () => {
+            const result = currentWorkflow.id
+                ? await updateWorkflow(projectId, currentWorkflow.id, currentWorkflow.name)
+                : await createWorkflow(projectId, currentWorkflow.name)
+
+            if (result.success) {
+                toast.success(`Successfully ${currentWorkflow.id ? "updated" : "created"} workflow`)
+                setIsWorkflowDialogOpen(false)
+                if (!currentWorkflow.id && (result as any).workflow?.id) {
+                    setSelectedWorkflowId((result as any).workflow.id)
+                }
+                setCurrentWorkflow(null)
+                loadWorkflowsAndPhases()
+            } else {
+                toast.error(result.error || "An error occurred")
+            }
+        })
+    }
+
+    const onConfirmDeleteWorkflow = async () => {
+        if (!selectedWorkflowId) return
+
+        startTransition(async () => {
+            const result = await deleteWorkflow(projectId, selectedWorkflowId)
+            if (result.success) {
+                toast.success("Successfully deleted workflow")
+                setIsWorkflowDeleteDialogOpen(false)
+                setSelectedWorkflowId(null)
+                loadWorkflowsAndPhases()
             } else {
                 toast.error(result.error || "An error occurred")
             }
@@ -99,7 +163,7 @@ export function WorkflowSettings({ projectId }: WorkflowSettingsProps) {
                 toast.success("Successfully deleted phase")
                 setIsDeleteDialogOpen(false)
                 setItemToDelete(null)
-                loadPhases() // Refresh list
+                loadWorkflowsAndPhases() // Refresh list
             } else {
                 toast.error(result.error || "An error occurred")
             }
@@ -111,29 +175,150 @@ export function WorkflowSettings({ projectId }: WorkflowSettingsProps) {
     }
 
     return (
-        <div className="space-y-8">
+        <div className="space-y-6">
             <Card>
-                <CardHeader className="flex flex-row items-center justify-between">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
                     <div>
-                        <CardTitle>Project Review Phases</CardTitle>
+                        <CardTitle>Review Workflows</CardTitle>
                         <CardDescription>
-                            Define the phases of your design review, their order, and which roles can edit issues during each phase.
+                            Create multiple workflow templates for different types of reviews.
                         </CardDescription>
                     </div>
-                    <Button onClick={handleAddPhaseClick} size="sm">
+                    <Button onClick={() => { setCurrentWorkflow({ name: "" }); setIsWorkflowDialogOpen(true) }} size="sm" variant="outline">
                         <Plus className="mr-2 h-4 w-4" />
-                        Add Phase
+                        New Workflow
                     </Button>
                 </CardHeader>
                 <CardContent>
-                    <WorkflowPhasesDnd 
-                        projectId={projectId} 
-                        phases={phases} 
-                        onEdit={handleEditPhaseClick} 
-                        onDelete={handleDeletePhaseClick} 
-                    />
+                    <div className="flex flex-wrap items-center gap-4">
+                        <div className="flex-1 min-w-[200px]">
+                            <Select 
+                                value={selectedWorkflowId || ""} 
+                                onValueChange={setSelectedWorkflowId}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Select a workflow" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {workflows.map(wf => (
+                                        <SelectItem key={wf.id} value={wf.id}>
+                                            {wf.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        {selectedWorkflowId && (
+                            <div className="flex items-center gap-2">
+                                <Button 
+                                    variant="ghost" 
+                                    size="sm" 
+                                    onClick={() => {
+                                        const wf = workflows.find(w => w.id === selectedWorkflowId)
+                                        if (wf) {
+                                            setCurrentWorkflow({ id: wf.id, name: wf.name })
+                                            setIsWorkflowDialogOpen(true)
+                                        }
+                                    }}
+                                >
+                                    Rename
+                                </Button>
+                                <Button 
+                                    variant="ghost" 
+                                    size="sm" 
+                                    className="text-destructive"
+                                    onClick={() => setIsWorkflowDeleteDialogOpen(true)}
+                                >
+                                    Delete
+                                </Button>
+                            </div>
+                        )}
+                    </div>
                 </CardContent>
             </Card>
+
+            {selectedWorkflowId ? (
+                <Card>
+                    <CardHeader className="flex flex-row items-center justify-between">
+                        <div>
+                            <CardTitle>Workflow Phases</CardTitle>
+                            <CardDescription>
+                                Define the sequence of phases for the selected workflow.
+                            </CardDescription>
+                        </div>
+                        <Button onClick={handleAddPhaseClick} size="sm">
+                            <Plus className="mr-2 h-4 w-4" />
+                            Add Phase
+                        </Button>
+                    </CardHeader>
+                    <CardContent>
+                        <WorkflowPhasesDnd 
+                            projectId={projectId} 
+                            phases={phases} 
+                            onEdit={handleEditPhaseClick} 
+                            onDelete={handleDeletePhaseClick} 
+                        />
+                    </CardContent>
+                </Card>
+            ) : (
+                <div className="p-12 border border-dashed rounded-lg text-center text-muted-foreground">
+                    Create or select a workflow to manage its phases.
+                </div>
+            )}
+
+            {/* Workflow Add/Edit Dialog */}
+            <Dialog open={isWorkflowDialogOpen} onOpenChange={setIsWorkflowDialogOpen}>
+                <DialogContent>
+                    <form onSubmit={onSaveWorkflow}>
+                        <DialogHeader>
+                            <DialogTitle>{currentWorkflow?.id ? "Rename" : "Create"} Workflow</DialogTitle>
+                            <DialogDescription>
+                                Give your workflow a descriptive name.
+                            </DialogDescription>
+                        </DialogHeader>
+                        <div className="grid gap-4 py-4">
+                            <div className="grid gap-2">
+                                <Label htmlFor="workflow-name">Workflow Name</Label>
+                                <Input
+                                    id="workflow-name"
+                                    value={currentWorkflow?.name || ""}
+                                    onChange={(e) => setCurrentWorkflow(prev => ({ ...prev!, name: e.target.value }))}
+                                    placeholder="e.g. standard design review"
+                                    required
+                                />
+                            </div>
+                        </div>
+                        <DialogFooter>
+                            <Button type="button" variant="outline" onClick={() => setIsWorkflowDialogOpen(false)} disabled={isPending}>
+                                Cancel
+                            </Button>
+                            <Button type="submit" disabled={isPending}>
+                                {isPending ? "Saving..." : "Save"}
+                            </Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
+
+            {/* Workflow Delete Confirmation */}
+            <Dialog open={isWorkflowDeleteDialogOpen} onOpenChange={setIsWorkflowDeleteDialogOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Delete Workflow</DialogTitle>
+                        <DialogDescription>
+                            Are you sure you want to delete this workflow? All associated phases will also be removed.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsWorkflowDeleteDialogOpen(false)} disabled={isPending}>
+                            Cancel
+                        </Button>
+                        <Button variant="destructive" onClick={onConfirmDeleteWorkflow} disabled={isPending}>
+                            {isPending ? "Deleting..." : "Delete"}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             {/* Add/Edit Dialog */}
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>

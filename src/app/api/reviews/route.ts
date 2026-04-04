@@ -15,6 +15,7 @@ type CreateReviewRequestBody = {
   dueDateIssueComments?: unknown
   dueDateReplies?: unknown
   projectId?: unknown
+  workflowId?: unknown
   documents?: { name: string; size: number }[]
 }
 
@@ -77,6 +78,7 @@ export async function POST(request: Request) {
     const dueDateSmeReview = normalizeOptionalDate(payload.dueDateSmeReview)
     const dueDateIssueComments = normalizeOptionalDate(payload.dueDateIssueComments)
     const dueDateReplies = normalizeOptionalDate(payload.dueDateReplies)
+    const workflowId = normalizeOptionalString(payload.workflowId)
 
     const supabase = await createServerSupabaseClient()
 
@@ -119,6 +121,8 @@ export async function POST(request: Request) {
     const reviewId = crypto.randomUUID()
     const slug = generateSlug(reviewName, reviewId, "review")
 
+    const now = new Date()
+    const startDate = now.toISOString()
     const insertPayload: Database["public"]["Tables"]["reviews"]["Insert"] = {
       id: reviewId,
       slug,
@@ -131,6 +135,7 @@ export async function POST(request: Request) {
       project_id: projectId,
       state: "Active",
       specific_status: "In Progress",
+      start_date: startDate,
     }
 
     // TODO: replace with typed insert once Supabase schema typings are fully defined.
@@ -154,6 +159,49 @@ export async function POST(request: Request) {
         },
       })
       throw new Error(error.message)
+    }
+
+    // Seed review phases based on project defaults
+    let phasesQuery = (supabase.from("project_review_phases") as any)
+      .select("*")
+      .eq("project_id", projectId)
+
+    if (workflowId) {
+      phasesQuery = phasesQuery.eq("workflow_id", workflowId)
+    } else {
+      // Fallback: use the first workflow if not specified
+      const { data: workflows } = await (supabase.from("project_workflows") as any)
+        .select("id")
+        .eq("project_id", projectId)
+        .order("created_at", { ascending: true })
+        .limit(1) as { data: { id: string }[] | null }
+      
+      if (workflows && workflows.length > 0) {
+        phasesQuery = phasesQuery.eq("workflow_id", workflows[0].id)
+      }
+    }
+
+    const { data: projectPhases } = await phasesQuery.order("order_index", { ascending: true })
+
+    if (projectPhases && projectPhases.length > 0) {
+      let cumulativeDays = 0
+      const reviewPhasesPayload = projectPhases.map((phase: any) => {
+        cumulativeDays += (phase.duration_days || 0)
+        const phaseDueDate = new Date(now)
+        phaseDueDate.setDate(phaseDueDate.getDate() + cumulativeDays)
+        
+        return {
+          review_id: reviewId,
+          name: phase.phase_name,
+          due_date: phaseDueDate.toISOString(),
+          status: "Pending",
+        }
+      })
+
+      const { error: phaseError } = await (supabase.from("review_phases") as any).insert(reviewPhasesPayload)
+      if (phaseError) {
+        console.error("Supabase insert error (review_phases)", phaseError)
+      }
     }
 
     if (payload.documents && Array.isArray(payload.documents) && payload.documents.length > 0) {

@@ -7,7 +7,8 @@ import { ArrowUpRight, Filter, Search, X, ChevronUp, ChevronDown, List, LayoutGr
 import { toast } from "sonner"
 
 import { updateReviewLifecycle } from "@/lib/actions/reviews"
-import { CreateReviewDialog } from "@/components/projects/create-review-dialog"
+import { CreateReviewWizard } from "@/components/create-review-wizard"
+import { Plus } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -113,6 +114,7 @@ export function ProjectReviewsList({ summary, isAdmin }: ProjectReviewsListProps
   } | null>(null)
   const [stateFilter, setStateFilter] = useState<string>("Active")
   const [view, setView] = useState<'table' | 'kanban' | 'timeline'>('table')
+  const [createWizardOpen, setCreateWizardOpen] = useState(false)
 
   // Advanced Table State
   const [columnOrder, setColumnOrder] = useState<string[]>([
@@ -369,7 +371,20 @@ export function ProjectReviewsList({ summary, isAdmin }: ProjectReviewsListProps
             </Tabs>
 
             <div className="flex items-center gap-2">
-              {isAdmin && <CreateReviewDialog projectId={summary.project.id} projectSlug={summary.project.slug || summary.project.id} milestones={milestones} />}
+              {isAdmin && (
+                <>
+                  <CreateReviewWizard 
+                    initialProjectId={summary.project.id} 
+                    showTrigger={false}
+                    open={createWizardOpen}
+                    onOpenChange={setCreateWizardOpen}
+                  />
+                  <Button variant="outline" size="sm" onClick={() => setCreateWizardOpen(true)}>
+                    <Plus className="mr-1 size-4" />
+                    New review
+                  </Button>
+                </>
+              )}
               <Button variant="ghost" size="sm">
                 View all
                 <ArrowUpRight className="ml-1 size-4" />

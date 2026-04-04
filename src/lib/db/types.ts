@@ -69,9 +69,19 @@ export type Review = {
   updated_at?: string | null
 }
 
+export type ProjectWorkflow = {
+  id: string
+  project_id: string
+  name: string
+  description?: string
+  created_at?: string | null
+  updated_at?: string | null
+}
+
 export type ProjectReviewPhase = {
   id: string
   project_id: string
+  workflow_id?: string
   phase_name: string
   duration_days: number
   order_index: number
@@ -81,6 +91,16 @@ export type ProjectReviewPhase = {
     companies: string[]
   }
   state: "Active" | "Complete" | "Archived"
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+export type ReviewPhase = {
+  id: string
+  review_id: string
+  name: string
+  due_date: string | null
+  status: string | null
   created_at?: string | null
   updated_at?: string | null
 }
@@ -193,12 +213,6 @@ export type ProjectClassification = {
   name: string
 }
 
-export type ProjectReviewStage = {
-  id: string
-  project_id: string
-  stage_name: string
-  days: number
-}
 
 export type ProjectResponseRole = {
   id: string
@@ -292,7 +306,6 @@ export type Database = {
       project_disciplines: TableDefinition<ProjectDiscipline>
       project_states: TableDefinition<ProjectState>
       project_suitabilities: TableDefinition<ProjectSuitability>
-      project_review_stages: TableDefinition<ProjectReviewStage>
       project_response_roles: TableDefinition<ProjectResponseRole>
       users: TableDefinition<User>
       companies: TableDefinition<Company>
@@ -303,7 +316,9 @@ export type Database = {
       project_packages: TableDefinition<ProjectPackage>
       project_classifications: TableDefinition<ProjectClassification>
       project_review_phases: TableDefinition<ProjectReviewPhase>
+      project_workflows: TableDefinition<ProjectWorkflow>
       project_reference_documents: TableDefinition<ProjectReferenceDocument>
+      review_phases: TableDefinition<ReviewPhase>
       review_document_views: TableDefinition<{
         id: string
         review_id: string
